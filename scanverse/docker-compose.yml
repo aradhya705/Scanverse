@@ -1,0 +1,57 @@
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: scanverse
+      POSTGRES_PASSWORD: scanverse
+      POSTGRES_DB: scanverse
+    volumes:
+      - scanverse_db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U scanverse"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    ports:
+      - "5433:5432"
+
+  backend:
+    build:
+      context: ./backend
+    restart: unless-stopped
+    env_file:
+      - ./backend/.env
+    environment:
+      DATABASE_URL: postgresql://scanverse:scanverse@db:5432/scanverse
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - scanverse_uploads:/app/uploads
+      - scanverse_exports:/app/exports
+    ports:
+      - "8000:8000"
+
+  frontend:
+    build:
+      context: ./frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+
+  nginx:
+    image: nginx:1.27-alpine
+    restart: unless-stopped
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - backend
+      - frontend
+    ports:
+      - "8080:80"
+
+volumes:
+  scanverse_db_data:
+  scanverse_uploads:
+  scanverse_exports:
