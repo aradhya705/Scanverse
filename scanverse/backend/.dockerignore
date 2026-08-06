@@ -1,0 +1,14 @@
+.git
+**/__pycache__
+**/*.pyc
+venv
+.venv
+uploads
+exports
+.env
+.env.*
+!.env.example
+tests
+*.log
+Dockerfile
+.dockerignore
