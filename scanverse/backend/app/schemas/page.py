@@ -70,6 +70,21 @@ class ReorderRequest(BaseModel):
     page_ids_in_order: list[str]
 
 
+class SignatureRequest(BaseModel):
+    """Composite a signature (PNG, base64) onto a page.
+
+    `x`/`y` position the signature's top-left corner as fractions of the
+    page (0..1); `width_fraction` scales it to that fraction of page width;
+    `opacity` 0..1 fades it.
+    """
+
+    signature_png_b64: str
+    x: float = 0.5
+    y: float = 0.6
+    width_fraction: float = 0.3
+    opacity: float = 1.0
+
+
 class CleanupRequest(BaseModel):
     """Rectangles (in the current preview image's pixel coordinates) to
     inpaint over — e.g. coffee stains, stray marks, fingertip in frame."""

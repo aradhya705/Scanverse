@@ -1,16 +1,21 @@
+import base64
+import io
 import os
 import shutil
 
 import cv2
+import numpy as np
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, Form
+from PIL import Image
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_user
 from app.core.config import settings
 from app.db.database import get_db
 from app.db.models import Document, Page, User
-from app.schemas.page import CleanupRequest, PageAdjustRequest, PageOut, ReorderRequest
+from app.schemas.page import CleanupRequest, PageAdjustRequest, PageOut, ReorderRequest, SignatureRequest
 from app.services import image_processing as ip
+from app.services import signature_service
 from app.utils.files import new_filename, user_dir, validate_image_content
 
 router = APIRouter(prefix="/scan", tags=["scan"])
@@ -325,6 +330,61 @@ def delete_page(page_id: str, db: Session = Depends(get_db), current_user: User 
     db.delete(page)
     db.commit()
     return None
+
+
+@router.post("/pages/{page_id}/signature", response_model=PageOut)
+def add_signature(
+    page_id: str,
+    payload: SignatureRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Composite a drawn/uploaded signature onto this page's current preview
+    and write it back as the new processed image (like applying a filter).
+    Undo by re-processing the page, which regenerates from the original."""
+    page = _get_owned_page(page_id, db, current_user)
+
+    try:
+        signature_png = base64.b64decode(payload.signature_png_b64, validate=True)
+        # Confirm it decodes as an image at all before compositing
+        Image.open(io.BytesIO(signature_png)).verify()
+    except Exception:
+        raise HTTPException(status_code=400, detail="signature_png_b64 is not valid PNG data")
+
+    source_path = page.processed_path or page.original_path
+    try:
+        composited = signature_service.composite_signature(
+            page_path=source_path,
+            signature_png=signature_png,
+            x=payload.x,
+            y=payload.y,
+            width_fraction=payload.width_fraction,
+            opacity=payload.opacity,
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=422, detail=f"Could not place signature: {exc}") from exc
+
+    directory = user_dir(current_user.id)
+    processed_filename = new_filename("jpg")
+    processed_path = os.path.join(directory, f"processed_{processed_filename}")
+    composited.save(processed_path, "JPEG", quality=92)
+
+    thumb_bgr = cv2.cvtColor(np.asarray(composited.convert("RGB")), cv2.COLOR_RGB2BGR)
+    thumb = ip.make_thumbnail(thumb_bgr)
+    thumb_path = os.path.join(directory, f"thumb_{processed_filename}")
+    cv2.imwrite(thumb_path, thumb, [cv2.IMWRITE_JPEG_QUALITY, 80])
+
+    if page.processed_path and os.path.exists(page.processed_path):
+        os.remove(page.processed_path)
+    if page.thumbnail_path and os.path.exists(page.thumbnail_path):
+        os.remove(page.thumbnail_path)
+
+    page.processed_path = processed_path
+    page.thumbnail_path = thumb_path
+
+    db.commit()
+    db.refresh(page)
+    return PageOut.model_validate(page)
 
 
 @router.post("/documents/{document_id}/reorder")

@@ -6,10 +6,12 @@ import {
   deletePage,
   downloadDocumentExport,
   getDocument,
+  mediaUrl,
   runOcr,
   updateDocument,
 } from "@/api/client";
 import CompressPdfModal from "@/components/CompressPdfModal";
+import SignatureModal from "@/components/SignatureModal";
 
 export default function DocumentDetail() {
   const { id } = useParams<{ id: string }>();
@@ -20,6 +22,7 @@ export default function DocumentDetail() {
   const [category, setCategory] = useState("");
   const [tagsInput, setTagsInput] = useState("");
   const [showCompress, setShowCompress] = useState(false);
+  const [showSignature, setShowSignature] = useState(false);
 
   const { data: document, isLoading } = useQuery({
     queryKey: ["document", id],
@@ -91,6 +94,9 @@ export default function DocumentDetail() {
           <button onClick={() => setShowCompress(true)} className="btn-secondary">
             Compress PDF
           </button>
+          <button onClick={() => setShowSignature(true)} className="btn-secondary">
+            Sign
+          </button>
           <button
             onClick={() => {
               if (confirm(`Delete "${document.title}"? This can't be undone.`)) removeDocument.mutate();
@@ -107,7 +113,7 @@ export default function DocumentDetail() {
           {activePage ? (
             <div className="card p-4">
               <img
-                src={activePage.processed_url || activePage.original_url || ""}
+                src={mediaUrl(activePage.processed_url || activePage.original_url) || ""}
                 alt={document.title}
                 className="w-full rounded-lg"
               />
@@ -127,7 +133,7 @@ export default function DocumentDetail() {
                   }`}
                 >
                   <img
-                    src={page.thumbnail_url || page.original_url || ""}
+                    src={mediaUrl(page.thumbnail_url || page.original_url) || ""}
                     alt={`Page ${idx + 1}`}
                     className="aspect-[3/4] w-full object-cover"
                   />
@@ -206,6 +212,18 @@ export default function DocumentDetail() {
           documentId={id!}
           title={document.title}
           onClose={() => setShowCompress(false)}
+        />
+      )}
+
+      {showSignature && activePage && (
+        <SignatureModal
+          pageId={activePage.id}
+          pageUrl={mediaUrl(activePage.processed_url || activePage.original_url) || ""}
+          onClose={() => setShowSignature(false)}
+          onApplied={() => {
+            queryClient.invalidateQueries({ queryKey: ["document", id] });
+            setShowSignature(false);
+          }}
         />
       )}
     </div>

@@ -9,9 +9,34 @@ import type {
   User,
 } from "@/types";
 
+// API base URL. Defaults to the same-origin "/api/v1" (proxied by Vite in
+// dev and by nginx in Docker). When the frontend is hosted somewhere that
+// can't proxy (e.g. Vercel), set VITE_API_BASE_URL to the full backend URL,
+// e.g. https://scanverse-api.example.com/api/v1 — then API calls and uploads
+// go directly to the backend (which must allow this origin via CORS).
+const API_BASE: string =
+  (import.meta.env.VITE_API_BASE_URL as string | undefined) || "/api/v1";
+
 export const api = axios.create({
-  baseURL: "/api/v1",
+  baseURL: API_BASE,
 });
+
+/**
+ * Resolve a backend-relative media URL (e.g. "/media/uploads/...") to an
+ * absolute URL when the frontend talks to a cross-origin backend. Returns the
+ * URL unchanged when no VITE_API_BASE_URL is configured (same-origin setup).
+ */
+export function mediaUrl(url: string | null | undefined): string | undefined {
+  if (!url) return undefined;
+  if (url.startsWith("http") || url.startsWith("data:") || url.startsWith("blob:")) return url;
+  const base = import.meta.env.VITE_API_BASE_URL as string | undefined;
+  if (!base || base === "/api/v1") return url;
+  try {
+    return `${new URL(base).origin}${url.startsWith("/") ? url : `/${url}`}`;
+  } catch {
+    return url;
+  }
+}
 
 api.interceptors.request.use((config) => {
   const token = localStorage.getItem("scanverse_token");
@@ -38,6 +63,22 @@ api.interceptors.response.use(
 // ---- Auth ----
 export async function registerUser(payload: { email: string; password: string; full_name?: string }) {
   const { data } = await api.post<{ access_token: string; user: User }>("/auth/register", payload);
+  return data;
+}
+
+export async function forgotPassword(email: string) {
+  const { data } = await api.post<{ detail: string; reset_token?: string; expires_minutes?: number }>(
+    "/auth/forgot-password",
+    { email }
+  );
+  return data;
+}
+
+export async function resetPassword(token: string, newPassword: string) {
+  const { data } = await api.post<{ detail: string }>("/auth/reset-password", {
+    token,
+    new_password: newPassword,
+  });
   return data;
 }
 
@@ -186,6 +227,116 @@ export async function downloadCompressedPdf(downloadFilename: string, title: str
   link.click();
   link.remove();
   window.URL.revokeObjectURL(blobUrl);
+}
+
+// ---- Stats ----
+export interface UserStats {
+  document_count: number;
+  page_count: number;
+  favorite_count: number;
+  total_storage_bytes: number;
+  ocr_char_count: number;
+  recently_edited: {
+    id: string;
+    title: string;
+    category: string;
+    is_favorite: boolean;
+    page_count: number;
+    updated_at: string;
+  }[];
+}
+
+export async function fetchStats() {
+  const { data } = await api.get<UserStats>("/stats");
+  return data;
+}
+
+// ---- PDF Tools ----
+export interface PdfToolBatchResult {
+  page_count: number;
+  download_filename: string;
+}
+
+export async function mergePdfs(files: File[]) {
+  const form = new FormData();
+  files.forEach((f) => form.append("files", f));
+  const { data } = await api.post<PdfToolBatchResult>("/pdf-tools/merge", form, {
+    headers: { "Content-Type": "multipart/form-data" },
+  });
+  return data;
+}
+
+export async function splitPdf(file: File) {
+  const form = new FormData();
+  form.append("file", file);
+  const { data } = await api.post<PdfToolBatchResult>("/pdf-tools/split", form, {
+    headers: { "Content-Type": "multipart/form-data" },
+  });
+  return data;
+}
+
+export async function extractPdfPages(file: File, pages: number[]) {
+  const form = new FormData();
+  form.append("file", file);
+  form.append("pages", pages.join(","));
+  const { data } = await api.post<PdfToolBatchResult>("/pdf-tools/extract", form, {
+    headers: { "Content-Type": "multipart/form-data" },
+  });
+  return data;
+}
+
+export async function deletePdfPages(file: File, pages: number[]) {
+  const form = new FormData();
+  form.append("file", file);
+  form.append("pages", pages.join(","));
+  const { data } = await api.post<PdfToolBatchResult>("/pdf-tools/delete-pages", form, {
+    headers: { "Content-Type": "multipart/form-data" },
+  });
+  return data;
+}
+
+export async function rearrangePdfPages(file: File, order: number[]) {
+  const form = new FormData();
+  form.append("file", file);
+  form.append("order", order.join(","));
+  const { data } = await api.post<PdfToolBatchResult>("/pdf-tools/rearrange", form, {
+    headers: { "Content-Type": "multipart/form-data" },
+  });
+  return data;
+}
+
+async function downloadPdfToolFile(filename: string, baseName: string) {
+  const response = await api.get(`/pdf-tools/download/${encodeURIComponent(filename)}`, {
+    responseType: "blob",
+  });
+  const ext = filename.split(".").pop() || "pdf";
+  const blobUrl = window.URL.createObjectURL(response.data);
+  const link = window.document.createElement("a");
+  link.href = blobUrl;
+  link.download = `${baseName}.${ext}`;
+  window.document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.URL.revokeObjectURL(blobUrl);
+}
+
+export async function downloadPdfToolOutput(result: PdfToolBatchResult, baseName: string) {
+  await downloadPdfToolFile(result.download_filename, baseName);
+}
+
+// ---- Signature ----
+export async function applySignature(
+  pageId: string,
+  payload: {
+    signature_png_b64: string;
+    x: number;
+    y: number;
+    width_fraction: number;
+    opacity: number;
+  }
+) {
+  const { data } = await api.post<Page>(`/scan/pages/${pageId}/signature`, payload);
+  return data;
 }
 
 // ---- Image Tools ----

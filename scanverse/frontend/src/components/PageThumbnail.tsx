@@ -1,3 +1,4 @@
+import { mediaUrl } from "@/api/client";
 import type { Page } from "@/types";
 
 interface PageThumbnailProps {
@@ -54,7 +55,7 @@ export default function PageThumbnail({
           <div className="aspect-[3/4] overflow-hidden rounded bg-black/5">
             {(page.thumbnail_url || page.original_url) && (
               <img
-                src={page.thumbnail_url || page.original_url || ""}
+                src={mediaUrl(page.thumbnail_url || page.original_url) || ""}
                 alt={`Page ${idx + 1}`}
                 className="h-full w-full object-cover"
               />

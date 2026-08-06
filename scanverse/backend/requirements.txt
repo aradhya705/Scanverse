@@ -11,8 +11,10 @@ pydantic==2.9.2
 pydantic-settings==2.5.2
 opencv-python-headless==4.10.0.84
 numpy==1.26.4
-Pillow==11.3.0
-pillow-heif==1.5.0
+Pillow==10.4.0
+# pillow-heif 1.x requires Pillow>=11.1 — 0.16.0 is the last release line
+# compatible with the pinned Pillow 10.4.0.
+pillow-heif==0.16.0
 easyocr==1.7.2
 PyMuPDF==1.24.10
 reportlab==4.2.2

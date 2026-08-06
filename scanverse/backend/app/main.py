@@ -7,7 +7,7 @@ from fastapi.staticfiles import StaticFiles
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 
-from app.api.routes import auth, documents, export, image_tools, ocr, pdf_tools, scan
+from app.api.routes import auth, documents, export, image_tools, ocr, pdf_tools, scan, stats
 from app.core.config import settings
 from app.core.limiter import limiter
 from app.db.database import Base, engine
@@ -84,6 +84,7 @@ app.include_router(ocr.router, prefix=settings.API_V1_PREFIX)
 app.include_router(export.router, prefix=settings.API_V1_PREFIX)
 app.include_router(pdf_tools.router, prefix=settings.API_V1_PREFIX)
 app.include_router(image_tools.router, prefix=settings.API_V1_PREFIX)
+app.include_router(stats.router, prefix=settings.API_V1_PREFIX)
 
 
 @app.get("/health")

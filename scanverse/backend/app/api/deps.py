@@ -16,9 +16,13 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
         headers={"WWW-Authenticate": "Bearer"},
     )
     user_id = decode_access_token(token)
-    if user_id is None:
+    # Only "access"-purpose tokens count as login credentials; reset/other
+    # one-time tokens must never be accepted by authenticated endpoints.
+    # A missing purpose claim is treated as "access" so tokens minted before
+    # the purpose claim existed keep working across upgrades.
+    if user_id is None or user_id.get("purpose") not in (None, "access"):
         raise credentials_exception
-    user = db.query(User).filter(User.id == user_id).first()
+    user = db.query(User).filter(User.id == user_id.get("sub")).first()
     if user is None or not user.is_active:
         raise credentials_exception
     return user

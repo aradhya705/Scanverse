@@ -1,0 +1,11 @@
+# Repo-root ignores (the git repo lives one folder above the project).
+
+# Freebuff desktop app internals — never commit these
+.freebuff/
+desktop-v2.db
+desktop-v2.db-shm
+desktop-v2.db-wal
+
+# Stale build log dumps
+docker_error.txt
+*.log

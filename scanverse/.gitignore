@@ -1,0 +1,38 @@
+# ---- Python ----
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# ---- Node ----
+node_modules/
+dist/
+*.tsbuildinfo
+
+# ---- Environment / secrets ----
+backend/.env
+.env
+.env.local
+*.pem
+
+# ---- Runtime data ----
+uploads/
+exports/
+backend/uploads/
+backend/exports/
+
+# ---- Local compose override (see file header) ----
+docker-compose.override.yml
+
+# ---- Freebuff desktop app internals ----
+.freebuff/
+
+# ---- Editor / OS ----
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

@@ -7,6 +7,7 @@ import {
   downloadDocumentExport,
   duplicatePage,
   getDocument,
+  mediaUrl,
   processPage,
   reorderPages,
   retakePage,
@@ -250,7 +251,7 @@ export default function NewScan() {
     onError: () => showToast("Export failed — try again", "error"),
   });
 
-  const previewUrl = activePage?.processed_url || activePage?.original_url;
+  const previewUrl = mediaUrl(activePage?.processed_url || activePage?.original_url);
 
   return (
     <div>
@@ -422,7 +423,7 @@ export default function NewScan() {
           <div className="flex justify-center bg-[#050506] p-4 sm:p-6">
             <div className="w-full max-w-xl">
               {mode === "crop" && previewUrl && corners && (
-                <CornerAdjuster imageUrl={activePage.original_url || ""} corners={corners} onChange={setCorners} />
+                <CornerAdjuster imageUrl={mediaUrl(activePage.original_url) || ""} corners={corners} onChange={setCorners} />
               )}
 
               {mode === "cleanup" && previewUrl && (

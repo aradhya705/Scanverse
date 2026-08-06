@@ -1,6 +1,7 @@
 import { NavLink } from "react-router-dom";
 import { AnimatePresence, motion } from "framer-motion";
 import Logo from "./Logo";
+import ThemeToggle from "./ThemeToggle";
 import { useAuth } from "@/context/AuthContext";
 
 const NAV_ITEMS = [
@@ -9,6 +10,7 @@ const NAV_ITEMS = [
   { to: "/dashboard/documents", label: "Documents", icon: "file" },
   { to: "/dashboard/documents?favorites=1", label: "Favorites", icon: "star" },
   { to: "/dashboard/image-tools", label: "Image Tools", icon: "image" },
+  { to: "/dashboard/pdf-tools", label: "PDF Tools", icon: "filetext" },
   { to: "/dashboard/settings", label: "Settings", icon: "gear" },
 ];
 
@@ -25,6 +27,8 @@ function Icon({ name }: { name: string }) {
       return <svg {...common}><path d="m12 2 3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2Z"/></svg>;
     case "image":
       return <svg {...common}><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="9.5" r="1.5"/><path d="m21 15-5-5L5 21"/></svg>;
+    case "filetext":
+      return <svg {...common}><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/><path d="M14 2v6h6M9 13h6M9 17h6"/></svg>;
     case "gear":
       return <svg {...common}><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z"/></svg>;
     default:
@@ -44,6 +48,7 @@ function SidebarContent({ onNavigate }: SidebarContentProps) {
       <div className="flex items-center gap-2 px-6 py-6">
         <Logo size={28} className="text-ink dark:text-paper" />
         <span className="font-display text-lg font-semibold tracking-tight">ScanVerse</span>
+        <ThemeToggle className="ml-auto" />
       </div>
 
       <nav className="flex-1 space-y-1 px-3">
