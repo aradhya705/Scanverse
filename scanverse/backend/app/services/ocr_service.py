@@ -20,6 +20,7 @@ from __future__ import annotations
 import threading
 
 import cv2
+import numpy as np
 import pytesseract
 
 from app.core.config import settings
