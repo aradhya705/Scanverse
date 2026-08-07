@@ -27,6 +27,7 @@ def gen_uuid():
 class FilterType(str, enum.Enum):
     original = "original"
     auto = "auto"
+    smart_document = "smart_document"
     color_boost = "color_boost"
     clean_document = "clean_document"
     black_and_white = "black_and_white"
