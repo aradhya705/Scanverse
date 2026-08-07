@@ -15,7 +15,10 @@ Pillow==10.4.0
 # pillow-heif 1.x requires Pillow>=11.1 — 0.16.0 is the last release line
 # compatible with the pinned Pillow 10.4.0.
 pillow-heif==0.16.0
-easyocr==1.7.2
+# Lightweight OCR (Tesseract) — runs in ~150 MB RAM on free-tier instances,
+# unlike EasyOCR/torch which OOMs below ~2 GB. Requires the tesseract binary
+# (see Dockerfile: apt install tesseract-ocr tesseract-ocr-eng).
+pytesseract==0.3.10
 PyMuPDF==1.24.10
 reportlab==4.2.2
 python-docx==1.1.2

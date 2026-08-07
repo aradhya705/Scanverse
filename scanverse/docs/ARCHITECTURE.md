@@ -30,14 +30,14 @@ scanverse/
 
 ## Backend layering
 
-`routes → services → (cv2 / PIL / fitz / easyocr)` — route modules handle HTTP
+`routes → services → (cv2 / PIL / fitz / pytesseract)` — route modules handle HTTP
 concerns (validation, auth, file limits) and delegate every heavy operation to
 a service module:
 
 | Service | Responsibility |
 |---|---|
 | `image_processing.py` | Corner/edge detection (3 strategies + sub-pixel refinement), perspective warp, auto-enhance (white balance, shadow removal, denoise, CLAHE), 18 filter presets, cleanup inpainting, deskew, OCR prep, thumbnails |
-| `ocr_service.py` | EasyOCR wrapper with language validation + confidence reporting |
+| `ocr_service.py` | Tesseract (pytesseract) wrapper with language validation + confidence reporting |
 | `export_service.py` | PDF (PyMuPDF), DOCX (python-docx), TXT generation |
 | `pdf_compression_service.py` | Target-size PDF compression: binary-searches JPEG quality, steps down render scale, reports `target_achieved` |
 | `image_compression_service.py` | Same target-size strategy for images; lossy (JPEG/WEBP) vs lossless (PNG/TIFF) paths |
@@ -95,10 +95,7 @@ result is returned with `target_achieved=false` so the UI can explain.
 
 ## Known trade-offs
 
-- OCR runs synchronously in the request (fine for single pages; multi-page
-  documents should move to a worker queue — see ROADMAP).
-- EasyOCR holds models in process memory; scale OCR as a dedicated worker for
-  multi-replica deployments.
+- Tesseract runs in-process per request (~150 MB); multi-page documents should still move to a worker queue (see ROADMAP).
 - Corner detection is classical OpenCV (fast, dependency-light) rather than a
   learned segmentation model; the manual corner handles exist for low-contrast
   edge cases.

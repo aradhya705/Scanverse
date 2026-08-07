@@ -38,8 +38,8 @@ git push -u origin main
 Any Linux VPS with Docker works. Recommended minimum:
 
 - **OS**: Ubuntu 22.04 or 24.04
-- **RAM**: 4 GB (the backend holds EasyOCR/torch in memory while OCR runs)
-- **Disk**: 25 GB+ (the backend image alone is ~9.6 GB)
+- **RAM**: 2 GB (Tesseract OCR is lightweight; 4 GB is comfortable headroom)
+- **Disk**: 15 GB+ (the backend image is ~1.5 GB)
 - **Domain** pointing at the server's IP (for HTTPS)
 
 ### 3. Install Docker on the server
@@ -94,8 +94,7 @@ them with your host firewall: `sudo ufw allow 80,443/tcp` and deny 8000/5432.
 docker compose up -d --build
 ```
 
-First build takes **10–25 minutes** (torch/EasyOCR download). Subsequent
-builds reuse the layer cache.
+First build takes **5–10 minutes**. Subsequent builds reuse the layer cache.
 
 ### 7. Verify
 
@@ -146,9 +145,8 @@ docker compose up -d --build
 ### Alternatives to a raw VPS
 
 - **PaaS (Railway / Render / Fly.io)**: point each at the repo; add a managed
-  Postgres; mount volumes for `/app/uploads` + `/app/exports`. Watch the
-  build time/memory for the torch image and set the start command to the
-  backend's `CMD`. The nginx service can be skipped — the PaaS handles TLS.
+  Postgres; mount volumes for `/app/uploads` + `/app/exports`. The nginx
+  service can be skipped — the PaaS handles TLS.
 - **Docker host panel (Coolify / CapRover)** on a VPS: paste the compose
   file into a project — closest to "one-click" without writing infra by hand.
 
@@ -157,10 +155,9 @@ docker compose up -d --build
 
 ### `docker compose up` fails to build the backend
 
-The image installs `easyocr` (torch), which is large. If the build times out,
-give the builder more time/disk; on a repeat run the layer cache makes it
-fast. `opencv-python-headless` needs the `libgl1`/`libglib2.0-0` system
-packages — already installed by the Dockerfile.
+The image installs `opencv-python-headless` (needs the `libgl1`/`libglib2.0-0`
+system packages) and `tesseract-ocr` — both already installed by the
+Dockerfile. If the build times out, give the builder more time/disk.
 
 ### "type 'filtertype' does not exist" during `alembic upgrade head`
 
@@ -179,7 +176,8 @@ requirements.txt` again to get the pinned version.
 - Check the scan has enough contrast (re-run OCR after applying a filter).
 - `preprocess=true` (default) deskews and lifts contrast before recognition —
   disable it (`?preprocess=false`) if it hurts a particular image.
-- First run downloads EasyOCR models; give it a minute.
+- OCR is synchronous; on a very large scan it can take a few seconds (Tesseract
+  runs in-process, no model download on first use).
 
 ### Frontend can't reach the API (404s on /api)
 
