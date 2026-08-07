@@ -28,6 +28,7 @@ import CaptureOverlay from "@/components/CaptureOverlay";
 import SignatureModal from "@/components/SignatureModal";
 import {
   Camera,
+  ChevronDown,
   Crop as CropIcon,
   Eraser,
   FileText,
@@ -108,13 +109,17 @@ export default function NewScan() {
   const [filter, setFilter] = useState<FilterName>("auto");
   const [adjustments, setAdjustments] = useState<Adjustments>(DEFAULT_ADJUSTMENTS);
   const [title, setTitle] = useState("Untitled Scan");
+  const [titleDirty, setTitleDirty] = useState(false);
+  const blurSavedRef = useRef(false);
   const [ocrText, setOcrText] = useState("");
   const [mode, setMode] = useState<Mode>("view");
   const [cleanupRegions, setCleanupRegions] = useState<number[][]>([]);
   const [showCapture, setShowCapture] = useState(false);
   const [showSignature, setShowSignature] = useState(false);
+  const [toolsOpen, setToolsOpen] = useState(false);
   const galleryInputRef = useRef<HTMLInputElement>(null);
   const retakeInputRef = useRef<HTMLInputElement>(null);
+  const titleInputRef = useRef<HTMLInputElement>(null);
 
   const { data: document } = useQuery({
     queryKey: ["document", documentId],
@@ -317,7 +322,16 @@ export default function NewScan() {
 
   const saveTitle = useMutation({
     mutationFn: () => updateDocument(documentId!, { title }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["document", documentId] }),
+    onSuccess: () => {
+      setTitleDirty(false);
+      blurSavedRef.current = false;
+      queryClient.invalidateQueries({ queryKey: ["document", documentId] });
+      showToast("Changes saved", "success");
+    },
+    onError: () => {
+      blurSavedRef.current = false;
+      showToast("Couldn't save changes — try again", "error");
+    },
   });
 
   const [exportFormat, setExportFormat] = useState<"pdf" | "docx" | "txt">("pdf");
@@ -343,31 +357,164 @@ export default function NewScan() {
         )}
         {documentId ? (
           <input
+            ref={titleInputRef}
             value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            onBlur={() => saveTitle.mutate()}
+            onChange={(e) => {
+              setTitle(e.target.value);
+              setTitleDirty(true);
+            }}
+            onBlur={() => {
+              if (titleDirty) {
+                blurSavedRef.current = true;
+                saveTitle.mutate();
+              }
+            }}
             className="w-72 border-none bg-transparent text-2xl font-semibold tracking-tight outline-none focus:ring-0"
           />
         ) : (
           <h1 className="text-2xl font-semibold tracking-tight">New scan</h1>
         )}
 
-        {documentId && document && document.pages.length > 0 && (
-          <div className="flex items-center gap-2">
+        {documentId && document && activePage && document.pages.length > 0 && (
+          <div className="flex flex-wrap items-center gap-2">
+            {/* All-tools dropdown (Adobe Scan-style More menu) */}
+            <div className="relative">
+              <button
+                onClick={() => setToolsOpen((v) => !v)}
+                className="btn-secondary flex items-center gap-1.5 text-sm"
+              >
+                Tools <ChevronDown className="h-4 w-4" />
+              </button>
+              {toolsOpen && (
+                <>
+                  <div className="fixed inset-0 z-40" onClick={() => setToolsOpen(false)} />
+                  <div className="absolute right-0 z-50 mt-2 w-52 overflow-hidden rounded-xl2 border border-line-light bg-white py-1 text-ink shadow-soft dark:border-line-dark dark:bg-surface-dark dark:text-white">
+                    {[
+                      {
+                        label: "Retake",
+                        icon: <Camera className="h-4 w-4" />,
+                        onClick: () => {
+                          setToolsOpen(false);
+                          retakeInputRef.current?.click();
+                        },
+                      },
+                      {
+                        label: "Crop",
+                        icon: <CropIcon className="h-4 w-4" />,
+                        onClick: () => {
+                          setMode("crop");
+                          setToolsOpen(false);
+                        },
+                      },
+                      {
+                        label: "Rotate",
+                        icon: <RotateCw className="h-4 w-4" />,
+                        onClick: () => {
+                          rotate.mutate(activePage.id);
+                          setToolsOpen(false);
+                        },
+                      },
+                      {
+                        label: "Filters",
+                        icon: <Sparkles className="h-4 w-4" />,
+                        onClick: () => {
+                          setMode("filters");
+                          setToolsOpen(false);
+                        },
+                      },
+                      {
+                        label: "Cleanup",
+                        icon: <Eraser className="h-4 w-4" />,
+                        onClick: () => {
+                          setMode("cleanup");
+                          setToolsOpen(false);
+                        },
+                      },
+                      {
+                        label: "Resize",
+                        icon: <Scaling className="h-4 w-4" />,
+                        onClick: () => {
+                          setMode("resize");
+                          setToolsOpen(false);
+                        },
+                      },
+                      {
+                        label: "Edit text",
+                        icon: <FileText className="h-4 w-4" />,
+                        onClick: () => {
+                          setMode("text");
+                          setToolsOpen(false);
+                        },
+                      },
+                      {
+                        label: "Sign",
+                        icon: <Pen className="h-4 w-4" />,
+                        onClick: () => {
+                          setShowSignature(true);
+                          setToolsOpen(false);
+                        },
+                      },
+                      {
+                        label: "Delete page",
+                        icon: <Trash2 className="h-4 w-4" />,
+                        onClick: () => {
+                          setToolsOpen(false);
+                          if (confirm("Delete this page?")) remove.mutate(activePage.id);
+                        },
+                      },
+                    ].map((tool) => (
+                      <button
+                        key={tool.label}
+                        onClick={tool.onClick}
+                        className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm text-ink/80 transition hover:bg-brand/15 hover:text-brand dark:text-white/80 dark:hover:text-white"
+                      >
+                        {tool.icon}
+                        {tool.label}
+                      </button>
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
+
             <button onClick={() => setShowCapture(true)} className="btn-secondary text-sm">
               Keep scanning
+            </button>
+            <button
+              onClick={() => {
+                // Blurring the title input triggers its autosave, and clicking
+                // the Save button blurs it first — so don't fire a second save.
+                if (blurSavedRef.current) {
+                  blurSavedRef.current = false;
+                  return;
+                }
+                if (titleDirty) {
+                  saveTitle.mutate();
+                } else {
+                  showToast("All changes already saved", "info");
+                }
+              }}
+              disabled={saveTitle.isPending}
+              className="btn-secondary flex items-center gap-1.5 text-sm"
+            >
+              <Check className="h-4 w-4" /> {saveTitle.isPending ? "Saving…" : "Save"}
             </button>
             <select
               value={exportFormat}
               onChange={(e) => setExportFormat(e.target.value as any)}
               className="input w-24"
+              aria-label="Export format"
             >
               <option value="pdf">PDF</option>
               <option value="docx">DOCX</option>
               <option value="txt">TXT</option>
             </select>
-            <button onClick={() => exporting.mutate()} disabled={exporting.isPending} className="btn-primary">
-              {exporting.isPending ? "Saving…" : "Save PDF"}
+            <button
+              onClick={() => exporting.mutate()}
+              disabled={exporting.isPending}
+              className="btn-primary flex items-center gap-1.5 text-sm"
+            >
+              {exporting.isPending ? "Saving…" : `Save ${exportFormat.toUpperCase()}`}
             </button>
           </div>
         )}
