@@ -22,11 +22,15 @@ import CornerAdjuster from "@/components/CornerAdjuster";
 import CleanupBrush from "@/components/CleanupBrush";
 import FilterPicker from "@/components/FilterPicker";
 import PageThumbnail from "@/components/PageThumbnail";
+import CaptureOverlay from "@/components/CaptureOverlay";
+import SignatureModal from "@/components/SignatureModal";
 import {
   Camera,
   Crop as CropIcon,
   Eraser,
   FileText,
+  Images,
+  Pen,
   RotateCw,
   Sparkles,
   Trash2,
@@ -92,7 +96,9 @@ export default function NewScan() {
   const [ocrText, setOcrText] = useState("");
   const [mode, setMode] = useState<Mode>("view");
   const [cleanupRegions, setCleanupRegions] = useState<number[][]>([]);
-  const cameraInputRef = useRef<HTMLInputElement>(null);
+  const [showCapture, setShowCapture] = useState(false);
+  const [showSignature, setShowSignature] = useState(false);
+  const galleryInputRef = useRef<HTMLInputElement>(null);
   const retakeInputRef = useRef<HTMLInputElement>(null);
 
   const { data: document } = useQuery({
@@ -122,18 +128,43 @@ export default function NewScan() {
       setMode("view");
       setCleanupRegions([]);
     }
-  }, [activePage?.id]);
+    // Re-sync when the auto-enhance (or a manual filter apply) changes the
+    // page's saved filter so the Filters panel shows the truth.
+  }, [activePage?.id, activePage?.filter_applied]);
 
   const upload = useMutation({
     mutationFn: (file: File) => uploadPage(file, documentId ?? undefined),
-    onSuccess: (page) => {
+    onSuccess: (page, file) => {
       if (!documentId) setDocumentId(page.document_id);
       setActivePageId(page.id);
+      // Adobe Scan behavior: straighten to the detected edges and enhance to
+      // a clean black & white document automatically (image captures only —
+      // uploaded PDFs keep their original colors).
+      if (file.type.startsWith("image/") && page.corners) {
+        autoEnhance.mutate({ pageId: page.id, corners: page.corners, documentId: page.document_id });
+      }
       queryClient.invalidateQueries({ queryKey: ["document", page.document_id] });
     },
     onError: (err: any) => {
       showToast(err?.response?.data?.detail || "Upload failed — check the file and try again", "error");
     },
+  });
+
+  const autoEnhance = useMutation({
+    mutationFn: ({
+      pageId,
+      corners,
+      documentId,
+    }: {
+      pageId: string;
+      corners: number[][];
+      documentId: string;
+    }) => processPage(pageId, { corners, filter_applied: "black_and_white", intensity: 1 }),
+    onSuccess: (_data, vars) => {
+      queryClient.invalidateQueries({ queryKey: ["document", vars.documentId] });
+      showToast("Edges detected — auto-enhanced to black & white", "success");
+    },
+    onError: () => showToast("Auto-enhance skipped — you can apply a filter manually", "info"),
   });
 
   const onDrop = useCallback(
@@ -175,7 +206,10 @@ export default function NewScan() {
 
   const retake = useMutation({
     mutationFn: (file: File) => retakePage(activePageId!, file),
-    onSuccess: () => {
+    onSuccess: (page) => {
+      if (page.corners) {
+        autoEnhance.mutate({ pageId: page.id, corners: page.corners, documentId: page.document_id });
+      }
       queryClient.invalidateQueries({ queryKey: ["document", documentId] });
       setMode("view");
     },
@@ -270,10 +304,7 @@ export default function NewScan() {
 
         {documentId && document && document.pages.length > 0 && (
           <div className="flex items-center gap-2">
-            <button
-              onClick={() => cameraInputRef.current?.click()}
-              className="btn-secondary text-sm"
-            >
+            <button onClick={() => setShowCapture(true)} className="btn-secondary text-sm">
               Keep scanning
             </button>
             <select
@@ -292,36 +323,50 @@ export default function NewScan() {
         )}
       </div>
 
-      {/* Upload zone — shown until at least one page exists */}
+      {/* Capture zone — shown until at least one page exists */}
       {!documentId && (
         <div
           {...getRootProps()}
-          className={`mt-6 flex cursor-pointer flex-col items-center justify-center gap-2 rounded-xl2 border-2 border-dashed p-10 text-center transition ${
+          className={`mt-6 cursor-pointer rounded-xl2 border-2 border-dashed p-10 text-center transition ${
             isDragActive ? "border-brand bg-brand/5" : "border-line-light hover:border-brand/40"
           }`}
         >
           <input {...getInputProps()} />
-          <p className="font-medium">Drop a document here, or click to upload</p>
-          <p className="text-xs text-ink/50">JPG, PNG, WEBP, or PDF</p>
-          <div className="mt-2 flex gap-2">
+          <p className="font-medium">Scan a document</p>
+          <p className="mt-1 text-xs text-ink/50">
+            Take a photo with your camera, or pick one from your gallery
+          </p>
+          <div className="mx-auto mt-5 flex max-w-md flex-col gap-3 sm:flex-row">
             <button
               type="button"
               onClick={(e) => {
                 e.stopPropagation();
-                cameraInputRef.current?.click();
+                setShowCapture(true);
               }}
-              className="btn-secondary text-xs"
+              className="btn-primary flex flex-1 items-center justify-center gap-2"
             >
-              <Camera className="mr-1 inline h-3.5 w-3.5" /> Use camera
+              <Camera className="h-4 w-4" /> Open camera
+            </button>
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                galleryInputRef.current?.click();
+              }}
+              className="btn-secondary flex flex-1 items-center justify-center gap-2"
+            >
+              <Images className="h-4 w-4" /> Choose from gallery
             </button>
           </div>
+          <p className="mt-4 text-xs text-ink/40">
+            Tip: you can also drag &amp; drop images or a PDF anywhere here
+          </p>
         </div>
       )}
       <input
-        ref={cameraInputRef}
+        ref={galleryInputRef}
         type="file"
-        accept="image/*"
-        capture="environment"
+        accept="image/*,application/pdf"
         className="hidden"
         onChange={(e) => {
           const file = e.target.files?.[0];
@@ -341,7 +386,11 @@ export default function NewScan() {
           e.target.value = "";
         }}
       />
-      {upload.isPending && <p className="mt-2 text-sm text-ink/50">Uploading and detecting edges…</p>}
+      {(upload.isPending || autoEnhance.isPending) && (
+        <p className="mt-2 text-sm text-ink/50">
+          {upload.isPending ? "Uploading and detecting edges…" : "Enhancing…"}
+        </p>
+      )}
 
       {document && document.pages.length > 0 && (
         <div className="mt-8">
@@ -509,6 +558,7 @@ export default function NewScan() {
               <ToolButton icon={<Sparkles className="h-5 w-5" />} label="Filters" onClick={() => setMode("filters")} />
               <ToolButton icon={<Eraser className="h-5 w-5" />} label="Cleanup" onClick={() => setMode("cleanup")} />
               <ToolButton icon={<FileText className="h-5 w-5" />} label="Edit text" onClick={() => setMode("text")} />
+              <ToolButton icon={<Pen className="h-5 w-5" />} label="Sign" onClick={() => setShowSignature(true)} />
               <ToolButton
                 icon={<Trash2 className="h-5 w-5" />}
                 label="Delete"
@@ -519,6 +569,28 @@ export default function NewScan() {
             </div>
           )}
         </div>
+      )}
+
+      {showCapture && (
+        <CaptureOverlay
+          onFile={(file) => {
+            setShowCapture(false);
+            upload.mutate(file);
+          }}
+          onClose={() => setShowCapture(false)}
+        />
+      )}
+
+      {showSignature && activePage && (
+        <SignatureModal
+          pageId={activePage.id}
+          pageUrl={previewUrl || ""}
+          onClose={() => setShowSignature(false)}
+          onApplied={() => {
+            queryClient.invalidateQueries({ queryKey: ["document", documentId] });
+            setShowSignature(false);
+          }}
+        />
       )}
     </div>
   );
