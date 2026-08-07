@@ -4,6 +4,14 @@
   "buildCommand": "npm run build",
   "outputDirectory": "dist",
   "rewrites": [
+    {
+      "source": "/api/(.*)",
+      "destination": "https://scanverse-production-248d.up.railway.app/api/$1"
+    },
+    {
+      "source": "/media/(.*)",
+      "destination": "https://scanverse-production-248d.up.railway.app/media/$1"
+    },
     { "source": "/((?!api/|media/).*)", "destination": "/index.html" }
   ]
 }
