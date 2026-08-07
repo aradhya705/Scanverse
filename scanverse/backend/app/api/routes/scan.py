@@ -148,6 +148,10 @@ def process_page(
         if payload.filter_applied not in ip.FILTER_PRESETS:
             raise HTTPException(status_code=400, detail="Unknown filter")
         page.filter_applied = payload.filter_applied
+    if payload.scale is not None:
+        if not (0.1 <= payload.scale <= 1.0):
+            raise HTTPException(status_code=400, detail="Scale must be between 0.1 and 1.0")
+        page.scale = payload.scale
     for field in ("brightness", "contrast", "saturation", "sharpness", "intensity"):
         value = getattr(payload, field)
         if value is not None:
@@ -172,6 +176,15 @@ def process_page(
         saturation=page.saturation,
         sharpness=page.sharpness,
     )
+
+    # Resize the finished page to the stored scale ("Resize" tool)
+    if page.scale and page.scale < 1.0:
+        h, w = working.shape[:2]
+        working = cv2.resize(
+            working,
+            (max(1, int(w * page.scale)), max(1, int(h * page.scale))),
+            interpolation=cv2.INTER_AREA,
+        )
 
     directory = user_dir(current_user.id)
     processed_filename = new_filename("jpg")
@@ -234,6 +247,7 @@ async def retake_page(
     page.saturation = 1.0
     page.sharpness = 1.0
     page.intensity = 1.0
+    page.scale = 1.0
 
     db.commit()
     db.refresh(page)
@@ -313,6 +327,7 @@ def duplicate_page(
         saturation=page.saturation,
         sharpness=page.sharpness,
         intensity=page.intensity,
+        scale=page.scale,
         ocr_text=page.ocr_text,
     )
     db.add(clone)

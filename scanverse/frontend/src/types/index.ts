@@ -45,6 +45,7 @@ export interface Page {
   saturation: number;
   sharpness: number;
   intensity: number;
+  scale: number;
   ocr_text: string | null;
   created_at: string;
 }

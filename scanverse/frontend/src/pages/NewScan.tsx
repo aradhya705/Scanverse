@@ -33,6 +33,7 @@ import {
   Images,
   Pen,
   RotateCw,
+  Scaling,
   Sparkles,
   Trash2,
   Check,
@@ -45,6 +46,7 @@ interface Adjustments {
   contrast: number;
   saturation: number;
   sharpness: number;
+  scale: number; // 0.25-1.0 output size multiplier (Resize tool)
 }
 
 const DEFAULT_ADJUSTMENTS: Adjustments = {
@@ -53,9 +55,10 @@ const DEFAULT_ADJUSTMENTS: Adjustments = {
   contrast: 1,
   saturation: 1,
   sharpness: 1,
+  scale: 1,
 };
 
-type Mode = "view" | "crop" | "filters" | "cleanup" | "text";
+type Mode = "view" | "crop" | "filters" | "cleanup" | "text" | "resize";
 
 /** The filter the user chose in Settings (falls back to the smart filter,
  * and ignores any stale/invalid value that may be in localStorage). */
@@ -131,6 +134,7 @@ export default function NewScan() {
         contrast: activePage.contrast,
         saturation: activePage.saturation,
         sharpness: activePage.sharpness,
+        scale: activePage.scale ?? 1,
       });
       setOcrText(activePage.ocr_text ?? "");
       setMode("view");
@@ -471,6 +475,15 @@ export default function NewScan() {
                 <Check className="h-4 w-4" /> {process.isPending ? "Applying…" : "Apply"}
               </button>
             )}
+            {mode === "resize" && (
+              <button
+                onClick={() => process.mutate()}
+                disabled={process.isPending}
+                className="flex items-center gap-1 rounded-full bg-brand px-4 py-1.5 text-sm font-medium text-white"
+              >
+                <Check className="h-4 w-4" /> {process.isPending ? "Applying…" : "Apply"}
+              </button>
+            )}
             {mode === "cleanup" && (
               <button
                 onClick={() => cleanup.mutate()}
@@ -517,9 +530,50 @@ export default function NewScan() {
                       active={filter}
                       onSelectFilter={setFilter}
                       adjustments={adjustments}
-                      onAdjustmentsChange={setAdjustments}
+                      onAdjustmentsChange={(adj) => setAdjustments({ ...adjustments, ...adj })}
                       disabled={process.isPending}
                     />
+                  </div>
+                </div>
+              )}
+
+              {mode === "resize" && previewUrl && (
+                <div className="grid grid-cols-1 gap-6 sm:grid-cols-[1fr_260px]">
+                  {/* Live preview: the page shown at its target output size */}
+                  <div className="flex max-h-[70vh] items-center justify-center overflow-hidden rounded-lg bg-[#050506]">
+                    <img
+                      src={previewUrl}
+                      alt="Resize preview"
+                      className="rounded-sm transition-all duration-150"
+                      style={{
+                        width: `${Math.round(adjustments.scale * 100)}%`,
+                        height: "auto",
+                      }}
+                    />
+                  </div>
+                  <div className="rounded-xl2 bg-surface-dark p-5 text-white">
+                    <p className="mb-4 text-sm font-medium">Output size</p>
+                    <label className="block">
+                      <div className="mb-1 flex items-center justify-between text-xs text-white/60">
+                        <span>Scale</span>
+                        <span className="font-mono">{Math.round(adjustments.scale * 100)}%</span>
+                      </div>
+                      <input
+                        type="range"
+                        min={0.25}
+                        max={1}
+                        step={0.05}
+                        value={adjustments.scale}
+                        onChange={(e) =>
+                          setAdjustments({ ...adjustments, scale: parseFloat(e.target.value) })
+                        }
+                        className="w-full accent-brand"
+                      />
+                    </label>
+                    <p className="mt-4 text-xs leading-relaxed text-white/50">
+                      Smaller sizes produce lower file sizes and faster exports. Your original photo stays
+                      untouched.
+                    </p>
                   </div>
                 </div>
               )}
@@ -581,6 +635,7 @@ export default function NewScan() {
               />
               <ToolButton icon={<Sparkles className="h-5 w-5" />} label="Filters" onClick={() => setMode("filters")} />
               <ToolButton icon={<Eraser className="h-5 w-5" />} label="Cleanup" onClick={() => setMode("cleanup")} />
+              <ToolButton icon={<Scaling className="h-5 w-5" />} label="Resize" onClick={() => setMode("resize")} />
               <ToolButton icon={<FileText className="h-5 w-5" />} label="Edit text" onClick={() => setMode("text")} />
               <ToolButton icon={<Pen className="h-5 w-5" />} label="Sign" onClick={() => setShowSignature(true)} />
               <ToolButton

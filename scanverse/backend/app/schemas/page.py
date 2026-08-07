@@ -32,6 +32,7 @@ class PageAdjustRequest(BaseModel):
     saturation: float | None = None
     sharpness: float | None = None
     intensity: float | None = None
+    scale: float | None = None  # 0.1-1.0 output size multiplier
 
 
 class PageOut(BaseModel):
@@ -51,6 +52,7 @@ class PageOut(BaseModel):
     saturation: float
     sharpness: float
     intensity: float
+    scale: float
     ocr_text: str | None
     created_at: datetime
 

@@ -101,6 +101,7 @@ class Page(Base):
     saturation = Column(Float, default=1.0)
     sharpness = Column(Float, default=1.0)
     intensity = Column(Float, default=1.0)
+    scale = Column(Float, default=1.0)  # 0.1-1.0 output size multiplier
 
     ocr_text = Column(Text, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
