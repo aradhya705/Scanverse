@@ -17,6 +17,7 @@ import {
   uploadPage,
 } from "@/api/client";
 import type { FilterName, Page } from "@/types";
+import { FILTER_LABELS } from "@/types";
 import { useToast } from "@/context/ToastContext";
 import CornerAdjuster from "@/components/CornerAdjuster";
 import CleanupBrush from "@/components/CleanupBrush";
@@ -55,6 +56,13 @@ const DEFAULT_ADJUSTMENTS: Adjustments = {
 };
 
 type Mode = "view" | "crop" | "filters" | "cleanup" | "text";
+
+/** The filter the user chose in Settings (falls back to the smart filter,
+ * and ignores any stale/invalid value that may be in localStorage). */
+function getDefaultScanFilter(): FilterName {
+  const raw = localStorage.getItem("scanverse_default_filter") as FilterName | null;
+  return raw && FILTER_LABELS[raw] ? raw : "smart_document";
+}
 
 function ToolButton({
   icon,
@@ -159,10 +167,26 @@ export default function NewScan() {
       pageId: string;
       corners: number[][];
       documentId: string;
-    }) => processPage(pageId, { corners, filter_applied: "black_and_white", intensity: 1 }),
+    }) => {
+      // Honor the default filter chosen in Settings (falls back to the
+      // smart filter that picks black & white vs color by itself).
+      const defaultFilter = getDefaultScanFilter();
+      return processPage(pageId, {
+        corners,
+        ...(defaultFilter === "original"
+          ? {} // crop/straighten only, keep the original colors
+          : { filter_applied: defaultFilter, intensity: 1 }),
+      });
+    },
     onSuccess: (_data, vars) => {
       queryClient.invalidateQueries({ queryKey: ["document", vars.documentId] });
-      showToast("Edges detected — auto-enhanced to black & white", "success");
+      const defaultFilter = getDefaultScanFilter();
+      showToast(
+        defaultFilter === "original"
+          ? "Edges detected — page straightened"
+          : `Edges detected — enhanced with ${FILTER_LABELS[defaultFilter]}`,
+        "success"
+      );
     },
     onError: () => showToast("Auto-enhance skipped — you can apply a filter manually", "info"),
   });

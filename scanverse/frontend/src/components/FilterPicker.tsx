@@ -4,6 +4,7 @@ import { FILTER_LABELS } from "@/types";
 const FILTERS: FilterName[] = [
   "original",
   "auto",
+  "smart_document",
   "black_and_white",
   "clean_document",
   "magic_color",

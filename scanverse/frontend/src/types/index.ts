@@ -8,6 +8,7 @@ export interface User {
 export type FilterName =
   | "original"
   | "auto"
+  | "smart_document"
   | "color_boost"
   | "clean_document"
   | "black_and_white"
@@ -101,6 +102,7 @@ export interface CompressImageResult {
 export const FILTER_LABELS: Record<FilterName, string> = {
   original: "Original",
   auto: "Auto",
+  smart_document: "Smart (auto)",
   color_boost: "Enhanced Color",
   clean_document: "Document",
   black_and_white: "Black & White",

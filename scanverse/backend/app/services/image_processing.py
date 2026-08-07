@@ -280,6 +280,7 @@ def auto_enhance(image_bgr: np.ndarray) -> np.ndarray:
 FILTER_PRESETS = {
     "original": {},
     "auto": {"auto_enhance": True},
+    "smart_document": {"smart_scan": True},
     "color_boost": {"saturation": 1.45, "contrast": 1.15, "brightness": 1.05},
     "clean_document": {"auto_enhance": True, "contrast": 1.2, "brightness": 1.08, "sharpness": 1.3},
     "black_and_white": {"grayscale": True, "contrast": 1.15},
@@ -369,6 +370,31 @@ def _apply_tint(pil_img: Image.Image, warm: bool) -> Image.Image:
     return Image.merge("RGB", (r, g, b))
 
 
+def smart_document_enhance(image_bgr: np.ndarray) -> np.ndarray:
+    """Adobe Scan-style "Auto": a clean document in one pass, choosing the
+    right look for the page.
+
+    If the image is essentially monochrome (text-only scans, receipts,
+    printed pages), it returns a crisp black & white document. If it has
+    meaningful color content (photos, magazines, colored paper), it returns
+    a clean color document instead. The decision is made from the fraction
+    of pixels with real saturation, so a white page with one small colored
+    logo still comes out looking like a clean scan.
+    """
+    hsv = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2HSV)
+    saturation = hsv[:, :, 1]
+    colorful_ratio = float((saturation > 60).sum()) / saturation.size
+    if colorful_ratio < 0.004:
+        # Crisp black & white for text-only pages
+        return apply_filter(image_bgr, "black_and_white", intensity=1.0)
+    # Clean color document: white-balance the shot, then a color/contrast
+    # lift. Deliberately avoids the shadow-normalization pass used by
+    # auto_enhance — normalizing each channel independently flattens
+    # colored regions into gray.
+    balanced = auto_white_balance(image_bgr)
+    return apply_filter(balanced, "color_boost", intensity=1.0)
+
+
 def apply_filter(
     image_bgr: np.ndarray,
     filter_name: str,
@@ -385,6 +411,9 @@ def apply_filter(
     """
     preset = FILTER_PRESETS.get(filter_name, FILTER_PRESETS["original"])
     working = image_bgr.copy()
+
+    if preset.get("smart_scan"):
+        return smart_document_enhance(image_bgr)
 
     if preset.get("auto_enhance"):
         working = auto_enhance(working)

@@ -78,11 +78,11 @@ export default function DocumentDetail() {
     <div>
       <div className="flex flex-wrap items-center justify-between gap-4">
         <h1 className="text-2xl font-semibold tracking-tight">{document.title}</h1>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 overflow-x-auto pb-1">
           <select
             value={exportFormat}
             onChange={(e) => setExportFormat(e.target.value as any)}
-            className="input w-28"
+            className="input w-28 shrink-0"
           >
             <option value="pdf">PDF</option>
             <option value="docx">DOCX</option>
@@ -91,17 +91,17 @@ export default function DocumentDetail() {
           <button onClick={() => exporting.mutate()} disabled={exporting.isPending} className="btn-primary">
             {exporting.isPending ? "Exporting…" : "Export"}
           </button>
-          <button onClick={() => setShowCompress(true)} className="btn-secondary">
+          <button onClick={() => setShowCompress(true)} className="btn-secondary shrink-0">
             Compress PDF
           </button>
-          <button onClick={() => setShowSignature(true)} className="btn-secondary">
+          <button onClick={() => setShowSignature(true)} className="btn-secondary shrink-0">
             Sign
           </button>
           <button
             onClick={() => {
               if (confirm(`Delete "${document.title}"? This can't be undone.`)) removeDocument.mutate();
             }}
-            className="btn-secondary text-red-500"
+            className="btn-secondary shrink-0 text-red-500"
           >
             Delete
           </button>

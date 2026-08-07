@@ -1,15 +1,27 @@
 import { useEffect, useState } from "react";
+import { FILTER_LABELS } from "@/types";
+import type { FilterName } from "@/types";
 
-const FILTERS = [
+const FILTERS: FilterName[] = [
+  "smart_document",
   "original",
   "auto",
-  "color_boost",
-  "clean_document",
   "black_and_white",
+  "clean_document",
+  "magic_color",
+  "color_boost",
+  "grayscale",
   "high_contrast",
-  "soft_gray",
+  "soft",
+  "bright",
+  "dark",
   "warm_paper",
   "cool_tone",
+  "blueprint",
+  "newspaper",
+  "pencil",
+  "ink",
+  "vintage",
 ];
 
 export default function Settings() {
@@ -17,8 +29,8 @@ export default function Settings() {
     () => (localStorage.getItem("scanverse_theme") as "light" | "dark") || "dark"
   );
   const [ocrLanguage, setOcrLanguage] = useState(() => localStorage.getItem("scanverse_ocr_lang") || "en");
-  const [defaultFilter, setDefaultFilter] = useState(
-    () => localStorage.getItem("scanverse_default_filter") || "auto"
+  const [defaultFilter, setDefaultFilter] = useState<FilterName>(
+    () => (localStorage.getItem("scanverse_default_filter") as FilterName) || "smart_document"
   );
 
   useEffect(() => {
@@ -40,12 +52,12 @@ export default function Settings() {
       <p className="mt-1 text-ink/50">Preferences apply on this device.</p>
 
       <div className="card mt-8 divide-y divide-line-light">
-        <div className="flex items-center justify-between p-5">
+        <div className="flex items-center justify-between gap-4 p-5">
           <div>
             <p className="font-medium">Appearance</p>
             <p className="text-sm text-ink/50">Choose light or dark mode.</p>
           </div>
-          <div className="flex overflow-hidden rounded-full border border-line-light">
+          <div className="flex shrink-0 overflow-hidden rounded-full border border-line-light">
             {(["light", "dark"] as const).map((mode) => (
               <button
                 key={mode}
@@ -60,7 +72,7 @@ export default function Settings() {
           </div>
         </div>
 
-        <div className="flex items-center justify-between p-5">
+        <div className="flex items-center justify-between gap-4 p-5">
           <div>
             <p className="font-medium">OCR language</p>
             <p className="text-sm text-ink/50">Used when extracting text from new scans.</p>
@@ -68,7 +80,7 @@ export default function Settings() {
           <select
             value={ocrLanguage}
             onChange={(e) => setOcrLanguage(e.target.value)}
-            className="input w-40"
+            className="input w-40 shrink-0"
           >
             <option value="en">English</option>
             <option value="es">Spanish</option>
@@ -78,19 +90,21 @@ export default function Settings() {
           </select>
         </div>
 
-        <div className="flex items-center justify-between p-5">
+        <div className="flex items-center justify-between gap-4 p-5">
           <div>
-            <p className="font-medium">Default filter</p>
-            <p className="text-sm text-ink/50">Applied automatically to new pages.</p>
+            <p className="font-medium">Default scan filter</p>
+            <p className="text-sm text-ink/50">
+              Applied automatically to new scans. Smart picks black &amp; white or color based on the page.
+            </p>
           </div>
           <select
             value={defaultFilter}
-            onChange={(e) => setDefaultFilter(e.target.value)}
-            className="input w-44"
+            onChange={(e) => setDefaultFilter(e.target.value as FilterName)}
+            className="input w-44 shrink-0"
           >
             {FILTERS.map((f) => (
               <option key={f} value={f}>
-                {f.replace(/_/g, " ")}
+                {FILTER_LABELS[f]}
               </option>
             ))}
           </select>
