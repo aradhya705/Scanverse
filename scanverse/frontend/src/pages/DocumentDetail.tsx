@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   deleteDocument,
@@ -79,6 +79,12 @@ export default function DocumentDetail() {
       <div className="flex flex-wrap items-center justify-between gap-4">
         <h1 className="text-2xl font-semibold tracking-tight">{document.title}</h1>
         <div className="flex items-center gap-2 overflow-x-auto pb-1">
+          <Link
+            to={`/dashboard/documents/${id}/edit`}
+            className="btn-primary shrink-0 text-sm"
+          >
+            Edit document
+          </Link>
           <select
             value={exportFormat}
             onChange={(e) => setExportFormat(e.target.value as any)}

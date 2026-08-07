@@ -43,6 +43,7 @@ export default function App() {
             <Route path="new-scan" element={<NewScan />} />
             <Route path="documents" element={<Documents />} />
             <Route path="documents/:id" element={<DocumentDetail />} />
+            <Route path="documents/:id/edit" element={<NewScan />} />
             <Route path="image-tools" element={<ImageTools />} />
             <Route path="pdf-tools" element={<PdfTools />} />
             <Route path="settings" element={<Settings />} />

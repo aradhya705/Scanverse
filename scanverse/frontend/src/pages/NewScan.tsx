@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { Link, useParams } from "react-router-dom";
 import { useDropzone } from "react-dropzone";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -98,7 +99,10 @@ function ToolButton({
 export default function NewScan() {
   const queryClient = useQueryClient();
   const { showToast } = useToast();
-  const [documentId, setDocumentId] = useState<string | null>(null);
+  // When routed as /dashboard/documents/:id/edit, open that document in the
+  // full editor instead of starting a brand-new scan.
+  const { id: editDocumentId } = useParams<{ id?: string }>();
+  const [documentId, setDocumentId] = useState<string | null>(editDocumentId ?? null);
   const [activePageId, setActivePageId] = useState<string | null>(null);
   const [corners, setCorners] = useState<number[][] | null>(null);
   const [filter, setFilter] = useState<FilterName>("auto");
@@ -121,6 +125,14 @@ export default function NewScan() {
   useEffect(() => {
     if (document) setTitle(document.title);
   }, [document?.title]);
+
+  // In edit mode, open the first page automatically once the document loads
+  useEffect(() => {
+    if (document && !activePageId && document.pages.length > 0) {
+      setActivePageId(document.pages[0].id);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [document?.id]);
 
   const activePage: Page | undefined = document?.pages.find((p) => p.id === activePageId);
 
@@ -321,6 +333,14 @@ export default function NewScan() {
     <div>
       {/* Top bar */}
       <div className="flex flex-wrap items-center justify-between gap-4">
+        {editDocumentId && (
+          <Link
+            to={`/dashboard/documents/${editDocumentId}`}
+            className="btn-secondary flex items-center gap-1.5 text-sm"
+          >
+            <ChevronLeft className="h-4 w-4" /> Back
+          </Link>
+        )}
         {documentId ? (
           <input
             value={title}
