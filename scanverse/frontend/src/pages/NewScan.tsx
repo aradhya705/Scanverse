@@ -619,9 +619,11 @@ export default function NewScan() {
             </div>
           </div>
 
-          {/* Bottom action bar (Adobe Scan-style) */}
+          {/* Bottom action bar (Adobe Scan-style). Sticky on mobile so the
+              tools stay visible above the bottom nav while editing — the
+              page preview can be tall and the tools were easy to miss. */}
           {mode === "view" && (
-            <div className="flex items-center justify-center gap-1 overflow-x-auto border-t border-white/10 bg-surface-dark px-2 py-2 text-white sm:gap-2">
+            <div className="sticky bottom-20 z-30 flex items-center justify-center gap-1 overflow-x-auto border-t border-white/10 bg-surface-dark px-2 py-2 text-white sm:gap-2 lg:bottom-0">
               <ToolButton
                 icon={<Camera className="h-5 w-5" />}
                 label="Retake"
