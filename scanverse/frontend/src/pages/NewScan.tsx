@@ -238,6 +238,8 @@ export default function NewScan() {
       if (page.corners) {
         autoEnhance.mutate({ pageId: page.id, corners: page.corners, documentId: page.document_id });
       }
+      // Retake resets the page server-side — clear any local resize too
+      setAdjustments((prev) => ({ ...prev, scale: 1 }));
       queryClient.invalidateQueries({ queryKey: ["document", documentId] });
       setMode("view");
     },
