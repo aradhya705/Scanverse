@@ -7,7 +7,7 @@ services:
     env: docker
     plan: free
     branch: main
-    rootDir: backend
+    rootDir: scanverse/backend
     dockerfilePath: ./Dockerfile
     healthCheckPath: /health
     envVars:
