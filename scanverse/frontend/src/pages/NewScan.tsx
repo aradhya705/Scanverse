@@ -681,7 +681,7 @@ export default function NewScan() {
 
           {/* Preview / active tool surface */}
           <div className="flex justify-center bg-[#050506] p-4 sm:p-6">
-            <div className="w-full max-w-xl">
+            <div className={mode === "text" ? "w-full" : "w-full max-w-xl"}>
               {mode === "crop" && previewUrl && corners && (
                 <CornerAdjuster imageUrl={mediaUrl(activePage.original_url) || ""} corners={corners} onChange={setCorners} />
               )}
@@ -773,9 +773,9 @@ export default function NewScan() {
                     </div>
                   </div>
 
-                  {ocrResult && previewUrl ? (
+                  {ocrResult ? (
                     <WordOcrViewer
-                      imageUrl={previewUrl}
+                      imageUrl={mediaUrl(activePage.original_url) || previewUrl || ""}
                       ocrResult={ocrResult}
                       onWordClick={(word) => {
                         console.log("Word clicked:", word);
@@ -799,7 +799,7 @@ export default function NewScan() {
                   ) : (
                     <>
                       {previewUrl && (
-                        <img src={previewUrl} alt="Preview" className="w-full rounded-lg" />
+                        <img src={mediaUrl(activePage.original_url) || previewUrl} alt="Preview" className="w-full rounded-lg" />
                       )}
                       <textarea
                         value={ocrText}

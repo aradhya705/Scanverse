@@ -210,7 +210,7 @@ export default function DocumentDetail() {
 
               {ocrViewMode === "interactive" && ocrResult ? (
                 <WordOcrViewer
-                  imageUrl={activePage?.processed_url || activePage?.original_url || ""}
+                  imageUrl={activePage?.original_url || activePage?.processed_url || ""}
                   ocrResult={ocrResult}
                   onWordClick={(word: OcrWord) => {
                     console.log("Word clicked:", word);

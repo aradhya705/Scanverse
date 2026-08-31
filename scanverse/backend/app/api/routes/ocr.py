@@ -53,8 +53,9 @@ def run_ocr_on_page(
     than it helps on a particular scan.
     """
     page = _get_owned_page(page_id, db, current_user)
-    image_path = page.processed_path or page.original_path
-    image = cv2.imread(image_path)
+    # Always OCR the ORIGINAL image — the processed version may be cropped
+    # by auto-enhance edge detection, which cuts off text at the margins.
+    image = cv2.imread(page.original_path)
     if image is None:
         raise HTTPException(status_code=422, detail="Could not read page image")
 
@@ -113,8 +114,8 @@ def run_ocr_on_document(
 
     page_results = []
     for page in sorted(document.pages, key=lambda p: p.order_index):
-        image_path = page.processed_path or page.original_path
-        image = cv2.imread(image_path)
+        # Always OCR the original image to capture all text
+        image = cv2.imread(page.original_path)
         if image is None:
             page_results.append({"page_id": page.id, "error": "Could not read page image"})
             continue
