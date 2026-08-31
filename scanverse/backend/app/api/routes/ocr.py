@@ -1,3 +1,5 @@
+import os
+
 import cv2
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
@@ -53,11 +55,15 @@ def run_ocr_on_page(
     than it helps on a particular scan.
     """
     page = _get_owned_page(page_id, db, current_user)
-    # Always OCR the ORIGINAL image — the processed version may be cropped
-    # by auto-enhance edge detection, which cuts off text at the margins.
-    image = cv2.imread(page.original_path)
+    # Try original first (full uncropped image), fall back to processed.
+    image = None
+    for path in [page.original_path, page.processed_path]:
+        if path and os.path.exists(path):
+            image = cv2.imread(path)
+            if image is not None:
+                break
     if image is None:
-        raise HTTPException(status_code=422, detail="Could not read page image")
+        raise HTTPException(status_code=422, detail="Could not read page image — file may be missing")
 
     lang_list = [l.strip() for l in languages.split(",")] if languages else ([language] if language else None)
     if lang_list:
@@ -114,8 +120,13 @@ def run_ocr_on_document(
 
     page_results = []
     for page in sorted(document.pages, key=lambda p: p.order_index):
-        # Always OCR the original image to capture all text
-        image = cv2.imread(page.original_path)
+        # Try original first, fall back to processed
+        image = None
+        for path in [page.original_path, page.processed_path]:
+            if path and os.path.exists(path):
+                image = cv2.imread(path)
+                if image is not None:
+                    break
         if image is None:
             page_results.append({"page_id": page.id, "error": "Could not read page image"})
             continue
