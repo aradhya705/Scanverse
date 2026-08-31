@@ -34,6 +34,7 @@ export default function WordOcrViewer({
   const [editingWord, setEditingWord] = useState<OcrWord | null>(null);
   const [editText, setEditText] = useState("");
   const [showAllWords, setShowAllWords] = useState(true);
+  const [highlightLow, setHighlightLow] = useState(highlightLowConfidence);
   const [confidenceFilter, setConfidenceFilter] = useState<"all" | "high" | "medium" | "low">("all");
 
   const resolvedUrl = mediaUrl(imageUrl) || imageUrl;
@@ -164,8 +165,8 @@ export default function WordOcrViewer({
           <label className="flex items-center gap-1.5 text-xs text-ink/60">
             <input
               type="checkbox"
-              checked={highlightLowConfidence}
-              onChange={(e) => setHighlightLowConfidence(e.target.checked)}
+              checked={highlightLow}
+              onChange={(e) => setHighlightLow(e.target.checked)}
               className="h-3.5 w-3.5 rounded border-line-light"
             />
             Highlight low confidence
@@ -220,7 +221,7 @@ export default function WordOcrViewer({
                 <div
                   key={word.id}
                   className={`absolute cursor-pointer transition-all duration-150 ${
-                    highlightLowConfidence && word.low_confidence
+                    highlightLow && word.low_confidence
                       ? "border-2 border-dashed"
                       : "border-1 border-solid"
                   } ${isHovered ? "z-20 scale-105" : ""} ${isSelected ? "z-10 ring-2 ring-brand" : ""}`}
