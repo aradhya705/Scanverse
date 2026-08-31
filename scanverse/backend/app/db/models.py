@@ -13,6 +13,7 @@ from sqlalchemy import (
     Enum,
     Boolean,
     JSON,
+    LargeBinary,
 )
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
@@ -88,9 +89,13 @@ class Page(Base):
     document_id = Column(UUID(as_uuid=False), ForeignKey("documents.id"), nullable=False)
     order_index = Column(Integer, default=0)
 
-    original_path = Column(String, nullable=False)
+    original_path = Column(String, nullable=True)
     processed_path = Column(String, nullable=True)
     thumbnail_path = Column(String, nullable=True)
+
+    # Binary image data stored in DB (survives free-tier restarts)
+    original_data = Column(LargeBinary, nullable=True)
+    processed_data = Column(LargeBinary, nullable=True)
 
     corners = Column(JSON, nullable=True)  # [[x,y] x4] detected/adjusted corners
     filter_applied = Column(Enum(FilterType), default=FilterType.original)
@@ -107,3 +112,11 @@ class Page(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
     document = relationship("Document", back_populates="pages")
+
+    @property
+    def has_original_data(self) -> bool:
+        return self.original_data is not None
+
+    @property
+    def has_processed_data(self) -> bool:
+        return self.processed_data is not None

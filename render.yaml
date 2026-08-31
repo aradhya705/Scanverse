@@ -1,18 +1,11 @@
-# Render Blueprint for the ScanVerse backend.
-# Deploy: render.com -> New -> Blueprint -> select aradhya705/Scanverse.
-#
-# IMPORTANT: The starter plan ($7/mo) is required for persistent disk.
-# Without it, uploaded files are wiped when the service restarts.
+# Render Blueprint for the ScanVerse backend — FREE TIER ($0/mo).
+# Images are stored in PostgreSQL (no persistent disk needed).
 
 services:
   - type: web
     name: scanverse-api
     env: docker
-    plan: starter
-    disk:
-      name: scanverse-data
-      mountPath: /data
-      sizeGB: 1
+    plan: free
     branch: main
     rootDir: backend
     dockerfilePath: ./Dockerfile

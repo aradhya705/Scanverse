@@ -59,12 +59,24 @@ class PageOut(BaseModel):
     original_url: str | None = None
     processed_url: str | None = None
     thumbnail_url: str | None = None
+    has_original_data: bool = False
+    has_processed_data: bool = False
 
     @model_validator(mode="after")
     def _compute_urls(self):
-        self.original_url = _to_media_url(self.original_path)
-        self.processed_url = _to_media_url(self.processed_path)
-        self.thumbnail_url = _to_media_url(self.thumbnail_path)
+        # Try disk path first; if missing, use DB image endpoint
+        orig = _to_media_url(self.original_path)
+        proc = _to_media_url(self.processed_path)
+        thumb = _to_media_url(self.thumbnail_path)
+
+        if not orig and self.has_original_data:
+            orig = f"/api/v1/media/pages/{self.id}/image?variant=original"
+        if not proc and self.has_processed_data:
+            proc = f"/api/v1/media/pages/{self.id}/image?variant=processed"
+
+        self.original_url = orig
+        self.processed_url = proc
+        self.thumbnail_url = thumb
         return self
 
 

@@ -17,6 +17,7 @@ from app.schemas.page import CleanupRequest, PageAdjustRequest, PageOut, Reorder
 from app.services import image_processing as ip
 from app.services import signature_service
 from app.utils.files import new_filename, user_dir, validate_image_content
+from app.utils.image_io import read_page_image, save_page_image
 
 router = APIRouter(prefix="/scan", tags=["scan"])
 
@@ -50,6 +51,26 @@ async def _save_upload_validated(file, directory: str, ext: str) -> str:
         raise HTTPException(status_code=400, detail=str(exc))
 
     return path
+
+
+def _read_image_from_page(page: Page, prefer: str = "original"):
+    """Read image from DB (binary) or disk (fallback). Returns BGR numpy array."""
+    for data in ([page.original_data, page.processed_data] if prefer == "original"
+                 else [page.processed_data, page.original_data]):
+        if data is not None:
+            import numpy as np
+            arr = np.frombuffer(data, dtype=np.uint8)
+            img = cv2.imdecode(arr, cv2.IMREAD_COLOR)
+            if img is not None:
+                return img
+    # Last resort: try disk paths
+    for path in ([page.original_path, page.processed_path] if prefer == "original"
+                 else [page.processed_path, page.original_path]):
+        if path and os.path.exists(path):
+            img = cv2.imread(path)
+            if img is not None:
+                return img
+    raise HTTPException(status_code=422, detail="Image not found — please re-upload this page")
 
 
 def _read_image(path: str):
@@ -89,6 +110,7 @@ async def upload_page(
     directory = user_dir(current_user.id)
     original_path = await _save_upload_validated(file, directory, ext)
 
+    # Read the saved file and store bytes in DB (survives free-tier restarts)
     image = _read_image(original_path)
     corners, confidence = ip.detect_document_corners(image)
     if corners is None:
@@ -109,6 +131,9 @@ async def upload_page(
         original_path=original_path,
         corners=corners,
     )
+    # Store image bytes in DB so they survive free-tier restarts
+    _, buf = cv2.imencode(".jpg", image, [cv2.IMWRITE_JPEG_QUALITY, 95])
+    page.original_data = buf.tobytes()
     db.add(page)
     db.commit()
     db.refresh(page)
@@ -122,7 +147,7 @@ def get_detection_confidence(
     page_id: str, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)
 ):
     page = _get_owned_page(page_id, db, current_user)
-    image = _read_image(page.original_path)
+    image = _read_image_from_page(page, prefer="original")
     corners, confidence = ip.detect_document_corners(image)
     return {"corners": corners or page.corners, "confidence": confidence}
 
@@ -147,7 +172,7 @@ def process_page(
     current_user: User = Depends(get_current_user),
 ):
     page = _get_owned_page(page_id, db, current_user)
-    image = _read_image(page.original_path)
+    image = _read_image_from_page(page, prefer="original")
 
     if payload.corners is not None:
         page.corners = payload.corners
@@ -223,6 +248,9 @@ def process_page(
 
     page.processed_path = processed_path
     page.thumbnail_path = thumb_path
+    # Store processed image in DB too (survives free-tier restarts)
+    _, proc_buf = cv2.imencode(".jpg", working, [cv2.IMWRITE_JPEG_QUALITY, 92])
+    page.processed_data = proc_buf.tobytes()
 
     db.commit()
     db.refresh(page)
@@ -269,6 +297,10 @@ async def retake_page(
     page.sharpness = 1.0
     page.intensity = 1.0
     page.scale = 1.0
+    # Store new image in DB
+    _, buf = cv2.imencode(".jpg", image, [cv2.IMWRITE_JPEG_QUALITY, 95])
+    page.original_data = buf.tobytes()
+    page.processed_data = None
 
     db.commit()
     db.refresh(page)
@@ -288,10 +320,9 @@ def cleanup_page(
     the result back as the new processed image."""
     page = _get_owned_page(page_id, db, current_user)
 
-    source_path = page.processed_path or page.original_path
-    if not source_path or not os.path.exists(source_path):
-        raise HTTPException(status_code=422, detail="Image file not found — please re-upload this page")
-    image = _read_image(source_path)
+    image = _read_image_from_page(page)
+    if image is None:
+        raise HTTPException(status_code=422, detail="Image not found — please re-upload this page")
     cleaned = ip.cleanup_regions(image, payload.regions)
 
     directory = user_dir(current_user.id)
@@ -310,6 +341,8 @@ def cleanup_page(
 
     page.processed_path = processed_path
     page.thumbnail_path = thumb_path
+    _, proc_buf = cv2.imencode(".jpg", cleaned, [cv2.IMWRITE_JPEG_QUALITY, 92])
+    page.processed_data = proc_buf.tobytes()
 
     db.commit()
     db.refresh(page)
@@ -321,10 +354,11 @@ def duplicate_page(
     page_id: str, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)
 ):
     page = _get_owned_page(page_id, db, current_user)    directory = user_dir(current_user.id)
-    if not page.original_path or not os.path.exists(page.original_path):
-        raise HTTPException(status_code=422, detail="Original image not found — cannot duplicate")
     new_original = os.path.join(directory, new_filename("jpg"))
-    shutil.copyfile(page.original_path, new_original)
+    if page.original_path and os.path.exists(page.original_path):
+        shutil.copyfile(page.original_path, new_original)
+    else:
+        new_original = None
 
     new_processed = None
     new_thumb = None
@@ -342,6 +376,8 @@ def duplicate_page(
         original_path=new_original,
         processed_path=new_processed,
         thumbnail_path=new_thumb,
+        original_data=page.original_data,
+        processed_data=page.processed_data,
         corners=page.corners,
         filter_applied=page.filter_applied,
         rotation=page.rotation,
@@ -389,9 +425,28 @@ def add_signature(
     except Exception:
         raise HTTPException(status_code=400, detail="signature_png_b64 is not valid PNG data")
 
-    source_path = page.processed_path or page.original_path
-    if not source_path or not os.path.exists(source_path):
-        raise HTTPException(status_code=422, detail="Image file not found — please re-upload this page")
+    # Read image from DB first, fall back to disk
+    sig_image = None
+    for data in [page.processed_data, page.original_data]:
+        if data is not None:
+            import numpy as np
+            arr = np.frombuffer(data, dtype=np.uint8)
+            sig_image = cv2.imdecode(arr, cv2.IMREAD_COLOR)
+            if sig_image is not None:
+                break
+    if sig_image is None:
+        for path in [page.processed_path, page.original_path]:
+            if path and os.path.exists(path):
+                sig_image = cv2.imread(path)
+                if sig_image is not None:
+                    break
+    if sig_image is None:
+        raise HTTPException(status_code=422, detail="Image not found — please re-upload this page")
+    # Save temp file for signature service (it expects a file path)
+    import tempfile
+    with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as tmp:
+        cv2.imwrite(tmp.name, sig_image, [cv2.IMWRITE_JPEG_QUALITY, 92])
+        source_path = tmp.name
     try:
         composited = signature_service.composite_signature(
             page_path=source_path,
@@ -421,6 +476,11 @@ def add_signature(
 
     page.processed_path = processed_path
     page.thumbnail_path = thumb_path
+    # Store signed image in DB
+    import numpy as np
+    signed_bgr = cv2.cvtColor(np.asarray(composited.convert("RGB")), cv2.COLOR_RGB2BGR)
+    _, sig_buf = cv2.imencode(".jpg", signed_bgr, [cv2.IMWRITE_JPEG_QUALITY, 92])
+    page.processed_data = sig_buf.tobytes()
 
     db.commit()
     db.refresh(page)

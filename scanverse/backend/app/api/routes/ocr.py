@@ -1,6 +1,7 @@
 import os
 
 import cv2
+import numpy as np
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
@@ -55,15 +56,22 @@ def run_ocr_on_page(
     than it helps on a particular scan.
     """
     page = _get_owned_page(page_id, db, current_user)
-    # Try original first (full uncropped image), fall back to processed.
+    # Read image from DB first (survives free-tier restarts), fall back to disk.
     image = None
-    for path in [page.original_path, page.processed_path]:
-        if path and os.path.exists(path):
-            image = cv2.imread(path)
+    for data in [page.original_data, page.processed_data]:
+        if data is not None:
+            arr = np.frombuffer(data, dtype=np.uint8)
+            image = cv2.imdecode(arr, cv2.IMREAD_COLOR)
             if image is not None:
                 break
     if image is None:
-        raise HTTPException(status_code=422, detail="Could not read page image — file may be missing")
+        for path in [page.original_path, page.processed_path]:
+            if path and os.path.exists(path):
+                image = cv2.imread(path)
+                if image is not None:
+                    break
+    if image is None:
+        raise HTTPException(status_code=422, detail="Image not found — please re-upload this page")
 
     lang_list = [l.strip() for l in languages.split(",")] if languages else ([language] if language else None)
     if lang_list:
@@ -120,15 +128,22 @@ def run_ocr_on_document(
 
     page_results = []
     for page in sorted(document.pages, key=lambda p: p.order_index):
-        # Try original first, fall back to processed
+        # Read from DB first, fall back to disk
         image = None
-        for path in [page.original_path, page.processed_path]:
-            if path and os.path.exists(path):
-                image = cv2.imread(path)
+        for data in [page.original_data, page.processed_data]:
+            if data is not None:
+                arr = np.frombuffer(data, dtype=np.uint8)
+                image = cv2.imdecode(arr, cv2.IMREAD_COLOR)
                 if image is not None:
                     break
         if image is None:
-            page_results.append({"page_id": page.id, "error": "Could not read page image"})
+            for path in [page.original_path, page.processed_path]:
+                if path and os.path.exists(path):
+                    image = cv2.imread(path)
+                    if image is not None:
+                        break
+        if image is None:
+            page_results.append({"page_id": page.id, "error": "Image not found"})
             continue
         result = ocr_service.extract_text(image, lang_list, preprocess=preprocess, auto_deskew=auto_deskew)
         page.ocr_text = result["full_text"]
