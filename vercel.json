@@ -1,0 +1,19 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": "vite",
+  "rootDirectory": "scanverse/frontend",
+  "buildCommand": "npm run build",
+  "outputDirectory": "dist",
+  "installCommand": "npm install",
+  "rewrites": [
+    {
+      "source": "/api/(.*)",
+      "destination": "https://scanverse-production-248d.up.railway.app/api/$1"
+    },
+    {
+      "source": "/media/(.*)",
+      "destination": "https://scanverse-production-248d.up.railway.app/media/$1"
+    },
+    { "source": "/((?!api/|media/).*)", "destination": "/index.html" }
+  ]
+}
