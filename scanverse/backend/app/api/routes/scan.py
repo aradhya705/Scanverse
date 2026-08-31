@@ -365,7 +365,8 @@ def cleanup_page(
 def duplicate_page(
     page_id: str, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)
 ):
-    page = _get_owned_page(page_id, db, current_user)    directory = user_dir(current_user.id)
+    page = _get_owned_page(page_id, db, current_user)
+    directory = user_dir(current_user.id)
     new_original = os.path.join(directory, new_filename("jpg"))
     if page.original_path and os.path.exists(page.original_path):
         shutil.copyfile(page.original_path, new_original)
