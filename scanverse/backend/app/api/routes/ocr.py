@@ -1,3 +1,4 @@
+import logging
 import os
 
 import cv2
@@ -10,6 +11,8 @@ from app.api.deps import get_current_user
 from app.db.database import get_db
 from app.db.models import Document, Page, User
 from app.services import ocr_service
+
+logger = logging.getLogger("scanverse.ocr")
 
 router = APIRouter(prefix="/ocr", tags=["ocr"])
 
@@ -56,25 +59,30 @@ def run_ocr_on_page(
     than it helps on a particular scan.
     """
     page = _get_owned_page(page_id, db, current_user)
+    logger.info(f"OCR request for page {page_id}: original_path={page.original_path}, has_original_data={getattr(page, 'original_data', None) is not None}")
     # Read image: try DB binary → disk path → either variant
     image = None
     try:
         for data in [getattr(page, 'original_data', None), getattr(page, 'processed_data', None)]:
             if data is not None:
+                logger.info(f"Found image data in DB ({len(data)} bytes)")
                 arr = np.frombuffer(data, dtype=np.uint8)
                 image = cv2.imdecode(arr, cv2.IMREAD_COLOR)
                 if image is not None:
                     break
-    except Exception:
-        pass  # Column may not exist yet
+    except Exception as e:
+        logger.warning(f"DB image read failed: {e}")
     if image is None:
         for path in [page.original_path, page.processed_path]:
             if path and os.path.exists(path):
+                logger.info(f"Falling back to disk: {path}")
                 image = cv2.imread(path)
                 if image is not None:
                     break
     if image is None:
+        logger.error(f"No image found for page {page_id}")
         raise HTTPException(status_code=422, detail="Image not found — please upload the image again")
+    logger.info(f"Image loaded: {image.shape}")
 
     lang_list = [l.strip() for l in languages.split(",")] if languages else ([language] if language else None)
     if lang_list:

@@ -16,8 +16,12 @@ from app.db.models import Document, Page, User
 from app.schemas.page import CleanupRequest, PageAdjustRequest, PageOut, ReorderRequest, SignatureRequest
 from app.services import image_processing as ip
 from app.services import signature_service
+import logging
+
 from app.utils.files import new_filename, user_dir, validate_image_content
 from app.utils.image_io import read_page_image, save_page_image
+
+logger = logging.getLogger("scanverse.scan")
 
 router = APIRouter(prefix="/scan", tags=["scan"])
 
@@ -135,8 +139,9 @@ async def upload_page(
     try:
         _, buf = cv2.imencode(".jpg", image, [cv2.IMWRITE_JPEG_QUALITY, 95])
         page.original_data = buf.tobytes()
-    except Exception:
-        pass  # Column may not exist yet — migration pending
+        logger.info(f"Stored image in DB: {len(page.original_data)} bytes for page {page.id}")
+    except Exception as e:
+        logger.warning(f"Could not store image in DB: {e}")
     db.add(page)
     db.commit()
     db.refresh(page)
