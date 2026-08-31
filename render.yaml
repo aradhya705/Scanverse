@@ -19,11 +19,6 @@ services:
         fromDatabase:
           name: scanverse-db
           property: connectionString
-      # IMPORTANT: replace with the exact URL of your Vercel frontend.
-      - key: UPLOAD_DIR
-        value: /data/uploads
-      - key: EXPORT_DIR
-        value: /data/exports
       - key: CORS_ORIGINS
         value: '["https://scanverse-wyfc.vercel.app"]'
 

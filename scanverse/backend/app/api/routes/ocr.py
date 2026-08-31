@@ -58,7 +58,7 @@ def run_ocr_on_page(
     page = _get_owned_page(page_id, db, current_user)
     # Read image from DB first (survives free-tier restarts), fall back to disk.
     image = None
-    for data in [page.original_data, page.processed_data]:
+    for data in [getattr(page, 'original_data', None), getattr(page, 'processed_data', None)]:
         if data is not None:
             arr = np.frombuffer(data, dtype=np.uint8)
             image = cv2.imdecode(arr, cv2.IMREAD_COLOR)
@@ -130,7 +130,7 @@ def run_ocr_on_document(
     for page in sorted(document.pages, key=lambda p: p.order_index):
         # Read from DB first, fall back to disk
         image = None
-        for data in [page.original_data, page.processed_data]:
+        for data in [getattr(page, 'original_data', None), getattr(page, 'processed_data', None)]:
             if data is not None:
                 arr = np.frombuffer(data, dtype=np.uint8)
                 image = cv2.imdecode(arr, cv2.IMREAD_COLOR)

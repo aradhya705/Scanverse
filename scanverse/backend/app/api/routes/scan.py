@@ -132,8 +132,11 @@ async def upload_page(
         corners=corners,
     )
     # Store image bytes in DB so they survive free-tier restarts
-    _, buf = cv2.imencode(".jpg", image, [cv2.IMWRITE_JPEG_QUALITY, 95])
-    page.original_data = buf.tobytes()
+    try:
+        _, buf = cv2.imencode(".jpg", image, [cv2.IMWRITE_JPEG_QUALITY, 95])
+        page.original_data = buf.tobytes()
+    except Exception:
+        pass  # Column may not exist yet — migration pending
     db.add(page)
     db.commit()
     db.refresh(page)
@@ -249,8 +252,11 @@ def process_page(
     page.processed_path = processed_path
     page.thumbnail_path = thumb_path
     # Store processed image in DB too (survives free-tier restarts)
-    _, proc_buf = cv2.imencode(".jpg", working, [cv2.IMWRITE_JPEG_QUALITY, 92])
-    page.processed_data = proc_buf.tobytes()
+    try:
+        _, proc_buf = cv2.imencode(".jpg", working, [cv2.IMWRITE_JPEG_QUALITY, 92])
+        page.processed_data = proc_buf.tobytes()
+    except Exception:
+        pass
 
     db.commit()
     db.refresh(page)
@@ -298,9 +304,12 @@ async def retake_page(
     page.intensity = 1.0
     page.scale = 1.0
     # Store new image in DB
-    _, buf = cv2.imencode(".jpg", image, [cv2.IMWRITE_JPEG_QUALITY, 95])
-    page.original_data = buf.tobytes()
-    page.processed_data = None
+    try:
+        _, buf = cv2.imencode(".jpg", image, [cv2.IMWRITE_JPEG_QUALITY, 95])
+        page.original_data = buf.tobytes()
+        page.processed_data = None
+    except Exception:
+        pass
 
     db.commit()
     db.refresh(page)
@@ -341,8 +350,11 @@ def cleanup_page(
 
     page.processed_path = processed_path
     page.thumbnail_path = thumb_path
-    _, proc_buf = cv2.imencode(".jpg", cleaned, [cv2.IMWRITE_JPEG_QUALITY, 92])
-    page.processed_data = proc_buf.tobytes()
+    try:
+        _, proc_buf = cv2.imencode(".jpg", cleaned, [cv2.IMWRITE_JPEG_QUALITY, 92])
+        page.processed_data = proc_buf.tobytes()
+    except Exception:
+        pass
 
     db.commit()
     db.refresh(page)
@@ -376,8 +388,8 @@ def duplicate_page(
         original_path=new_original,
         processed_path=new_processed,
         thumbnail_path=new_thumb,
-        original_data=page.original_data,
-        processed_data=page.processed_data,
+        original_data=getattr(page, 'original_data', None),
+        processed_data=getattr(page, 'processed_data', None),
         corners=page.corners,
         filter_applied=page.filter_applied,
         rotation=page.rotation,
@@ -477,10 +489,13 @@ def add_signature(
     page.processed_path = processed_path
     page.thumbnail_path = thumb_path
     # Store signed image in DB
-    import numpy as np
-    signed_bgr = cv2.cvtColor(np.asarray(composited.convert("RGB")), cv2.COLOR_RGB2BGR)
-    _, sig_buf = cv2.imencode(".jpg", signed_bgr, [cv2.IMWRITE_JPEG_QUALITY, 92])
-    page.processed_data = sig_buf.tobytes()
+    try:
+        import numpy as np
+        signed_bgr = cv2.cvtColor(np.asarray(composited.convert("RGB")), cv2.COLOR_RGB2BGR)
+        _, sig_buf = cv2.imencode(".jpg", signed_bgr, [cv2.IMWRITE_JPEG_QUALITY, 92])
+        page.processed_data = sig_buf.tobytes()
+    except Exception:
+        pass
 
     db.commit()
     db.refresh(page)

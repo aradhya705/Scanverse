@@ -41,7 +41,7 @@ class PageOut(BaseModel):
     id: str
     document_id: str
     order_index: int
-    original_path: str
+    original_path: str | None
     processed_path: str | None
     thumbnail_path: str | None
     corners: list[list[float]] | None

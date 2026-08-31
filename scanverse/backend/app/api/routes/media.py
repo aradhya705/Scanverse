@@ -33,10 +33,10 @@ def serve_page_image(
     if not page:
         raise HTTPException(status_code=404, detail="Page not found")
 
-    data = page.processed_data if variant == "processed" else page.original_data
+    data = getattr(page, 'processed_data' if variant == 'processed' else 'original_data', None)
     if data is None:
         # Try the other variant
-        data = page.original_data if variant == "processed" else page.processed_data
+        data = getattr(page, 'original_data' if variant == 'processed' else 'processed_data', None)
     if data is None:
         raise HTTPException(status_code=404, detail="Image not found in database")
 
