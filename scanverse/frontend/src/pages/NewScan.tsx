@@ -26,6 +26,8 @@ import FilterPicker from "@/components/FilterPicker";
 import PageThumbnail from "@/components/PageThumbnail";
 import CaptureOverlay from "@/components/CaptureOverlay";
 import SignatureModal from "@/components/SignatureModal";
+import WordOcrViewer from "@/components/WordOcrViewer";
+import type { OcrResult } from "@/api/client";
 import {
   Camera,
   ChevronDown,
@@ -112,6 +114,7 @@ export default function NewScan() {
   const [titleDirty, setTitleDirty] = useState(false);
   const blurSavedRef = useRef(false);
   const [ocrText, setOcrText] = useState("");
+  const [ocrResult, setOcrResult] = useState<OcrResult | null>(null);
   const [mode, setMode] = useState<Mode>("view");
   const [cleanupRegions, setCleanupRegions] = useState<number[][]>([]);
   const [showCapture, setShowCapture] = useState(false);
@@ -154,6 +157,7 @@ export default function NewScan() {
         scale: activePage.scale ?? 1,
       });
       setOcrText(activePage.ocr_text ?? "");
+      // Don't clear ocrResult if it's for the same page — only reset on page change
       setMode("view");
       setCleanupRegions([]);
     }
@@ -294,8 +298,9 @@ export default function NewScan() {
 
   const ocr = useMutation({
     mutationFn: () => runOcr(activePageId!),
-    onSuccess: (result) => {
+    onSuccess: (result: OcrResult) => {
       setOcrText(result.full_text);
+      setOcrResult(result);
       queryClient.invalidateQueries({ queryKey: ["document", documentId] });
       if (!result.line_count) {
         showToast("No text found on this page", "info");
@@ -748,35 +753,63 @@ export default function NewScan() {
               )}
 
               {mode === "text" && (
-                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                  {previewUrl && <img src={previewUrl} alt="Preview" className="w-full rounded-lg" />}
-                  <div>
-                    <div className="mb-2 flex items-center justify-between">
-                      <p className="text-sm font-medium text-white/80">Extracted text</p>
-                      <div className="flex gap-3">
-                        <button
-                          onClick={() => ocr.mutate()}
-                          disabled={ocr.isPending}
-                          className="text-xs text-brand hover:underline"
-                        >
-                          {ocr.isPending ? "Scanning…" : "Re-run OCR"}
-                        </button>
-                        <button
-                          onClick={() => navigator.clipboard.writeText(ocrText)}
-                          className="text-xs text-brand hover:underline"
-                        >
-                          Copy
-                        </button>
-                      </div>
+                <div className="flex flex-col gap-4">
+                  <div className="flex items-center justify-between">
+                    <p className="text-sm font-medium text-white/80">Extracted text</p>
+                    <div className="flex gap-3">
+                      <button
+                        onClick={() => ocr.mutate()}
+                        disabled={ocr.isPending}
+                        className="text-xs text-brand hover:underline"
+                      >
+                        {ocr.isPending ? "Scanning…" : ocrResult ? "Re-run OCR" : "Run OCR"}
+                      </button>
+                      <button
+                        onClick={() => navigator.clipboard.writeText(ocrText)}
+                        className="text-xs text-brand hover:underline"
+                      >
+                        Copy
+                      </button>
                     </div>
-                    <textarea
-                      value={ocrText}
-                      onChange={(e) => setOcrText(e.target.value)}
-                      rows={14}
-                      placeholder="No text extracted yet — tap Re-run OCR."
-                      className="w-full rounded-lg border border-white/10 bg-black/40 px-3.5 py-2.5 text-xs text-white outline-none focus:border-brand font-mono"
-                    />
                   </div>
+
+                  {ocrResult && previewUrl ? (
+                    <WordOcrViewer
+                      imageUrl={previewUrl}
+                      ocrResult={ocrResult}
+                      onWordClick={(word) => {
+                        console.log("Word clicked:", word);
+                      }}
+                      onWordUpdate={async (wordId: number, newText: string) => {
+                        const updatedWords = ocrResult.words.map((w) =>
+                          w.id === wordId ? { ...w, text: newText } : w
+                        );
+                        const lines = ocrResult.lines.map((line) => ({
+                          ...line,
+                          text: line.word_ids
+                            .map((wid) => updatedWords.find((w) => w.id === wid)?.text || "")
+                            .filter(Boolean)
+                            .join(" "),
+                        }));
+                        const fullText = lines.map((l) => l.text).join("\n");
+                        setOcrResult({ ...ocrResult, words: updatedWords, lines, full_text: fullText });
+                        setOcrText(fullText);
+                      }}
+                    />
+                  ) : (
+                    <>
+                      {previewUrl && (
+                        <img src={previewUrl} alt="Preview" className="w-full rounded-lg" />
+                      )}
+                      <textarea
+                        value={ocrText}
+                        onChange={(e) => setOcrText(e.target.value)}
+                        rows={14}
+                        placeholder="No text extracted yet — tap Run OCR."
+                        className="w-full rounded-lg border border-white/10 bg-black/40 px-3.5 py-2.5 text-xs text-white outline-none focus:border-brand font-mono"
+                      />
+                    </>
+                  )}
                 </div>
               )}
 
