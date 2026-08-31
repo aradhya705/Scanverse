@@ -580,14 +580,19 @@ def prepare_for_ocr(image_bgr: np.ndarray, *, auto_deskew: bool = True) -> np.nd
     # Step 1: Upscale if the image is too small for reliable OCR.
     # Newspaper text in phone photos is often only 8-12px tall; Tesseract
     # needs 20-30px for accurate character recognition.
+    # Cap at 2x and max 2400px on the longest side to keep speed reasonable.
     min_side = min(h, w)
+    max_side = max(h, w)
     if min_side < 1500:
-        scale_factor = min(3.0, 1500.0 / min_side)
-        working = cv2.resize(
-            working,
-            (int(w * scale_factor), int(h * scale_factor)),
-            interpolation=cv2.INTER_CUBIC,
-        )
+        scale_factor = min(2.0, 1500.0 / min_side)
+        new_w = int(w * scale_factor)
+        new_h = int(h * scale_factor)
+        # Hard cap: don't exceed 2400px on longest side
+        if max(new_w, new_h) > 2400:
+            cap = 2400.0 / max(new_w, new_h)
+            new_w = int(new_w * cap)
+            new_h = int(new_h * cap)
+        working = cv2.resize(working, (new_w, new_h), interpolation=cv2.INTER_CUBIC)
 
     # Step 2: Deskew to straighten text lines
     if auto_deskew:

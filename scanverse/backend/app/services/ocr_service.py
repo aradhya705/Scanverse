@@ -229,21 +229,20 @@ def extract_text(
     else:
         gray_binary = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2GRAY)
 
-    # Also prepare a grayscale version WITHOUT binarization — some images
-    # (high-quality scans with good contrast) do better without it.
+    # Also prepare a grayscale version WITHOUT binarization — just
+    # upscale + sharpen + contrast. Faster than a full second pipeline.
     if preprocess:
-        working_soft = prepare_for_ocr(image_bgr, auto_deskew=auto_deskew)
-        # Re-do a softer version: upscale + sharpen but skip binarization
         h, w = image_bgr.shape[:2]
         soft = image_bgr.copy()
         min_side = min(h, w)
         if min_side < 1500:
-            sf = min(3.0, 1500.0 / min_side)
-            soft = cv2.resize(soft, (int(w * sf), int(h * sf)), interpolation=cv2.INTER_CUBIC)
+            sf = min(2.0, 1500.0 / min_side)
+            new_w, new_h = int(w * sf), int(h * sf)
+            if max(new_w, new_h) > 2400:
+                cap = 2400.0 / max(new_w, new_h)
+                new_w, new_h = int(new_w * cap), int(new_h * cap)
+            soft = cv2.resize(soft, (new_w, new_h), interpolation=cv2.INTER_CUBIC)
         soft = cv2.bilateralFilter(soft, 9, 75, 75)
-        blur = cv2.GaussianBlur(soft, (0, 0), 3)
-        soft = cv2.addWeighted(soft, 1.5, blur, -0.5, 0)
-        soft = np.clip(soft, 0, 255).astype(np.uint8)
         lab = cv2.cvtColor(soft, cv2.COLOR_BGR2LAB)
         l_ch, a_ch, b_ch = cv2.split(lab)
         clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8, 8))
@@ -253,18 +252,21 @@ def extract_text(
     else:
         gray_soft = gray_binary
 
-    # Multi-pass OCR: try (image_variant, psm_mode) combinations and keep the best
+    # Multi-pass OCR: try 3 key combinations and keep the best.
+    # binary+PSM6: best for newspapers/columns
+    # soft+PSM3: best for clean single-column docs  
+    # binary+PSM3: fallback for mixed content
     candidates = []
-    for gray_img, variant_label in [
-        (gray_binary, "binary"),
-        (gray_soft, "soft"),
+    for gray_img, psm in [
+        (gray_binary, 6),
+        (gray_soft, 3),
+        (gray_binary, 3),
     ]:
-        for psm in [3, 6, 11]:
-            try:
-                result = _run_tesseract(gray_img, lang_config, psm)
-                candidates.append((result, variant_label, psm))
-            except Exception:
-                continue
+        try:
+            result = _run_tesseract(gray_img, lang_config, psm)
+            candidates.append((result, "", psm))
+        except Exception:
+            continue
 
     # Pick the candidate with the best combined score: prefer more words,
     # and use confidence as a tiebreaker.
