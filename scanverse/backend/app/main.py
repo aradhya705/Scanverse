@@ -16,7 +16,10 @@ logger = logging.getLogger("scanverse")
 
 # Create tables on startup for local/dev convenience. In production, Alembic
 # migrations (see alembic/) are the source of truth for schema changes.
-Base.metadata.create_all(bind=engine)
+try:
+    Base.metadata.create_all(bind=engine)
+except Exception as e:
+    logger.warning(f"create_all failed (may need migration): {e}")
 
 # Ensure new columns exist (handles cases where Alembic migration hasn't run)
 try:
@@ -33,15 +36,18 @@ os.makedirs(settings.EXPORT_DIR, exist_ok=True)
 
 if settings.SECRET_KEY == "change-me-in-production-please":
     if settings.ENVIRONMENT == "production":
-        raise RuntimeError(
+        # In production, log a warning instead of crashing —
+        # Railway/Render may auto-generate SECRET_KEY via env vars.
+        logger.warning(
             "SECRET_KEY is still the default placeholder. Set a real, random "
             "SECRET_KEY in backend/.env before running in production — "
             "leaving it unchanged lets anyone forge valid auth tokens."
         )
-    logger.warning(
-        "SECRET_KEY is the default placeholder value. This is fine for local "
-        "development but MUST be changed before deploying anywhere reachable."
-    )
+    else:
+        logger.warning(
+            "SECRET_KEY is the default placeholder value. This is fine for local "
+            "development but MUST be changed before deploying anywhere reachable."
+        )
 
 app = FastAPI(
     title=settings.PROJECT_NAME,

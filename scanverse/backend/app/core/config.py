@@ -27,7 +27,7 @@ class Settings(BaseSettings):
     MAX_UPLOAD_MB: int = 25
 
     # CORS
-    CORS_ORIGINS: list[str] = ["http://localhost:5173", "http://localhost:8080", "http://localhost"]
+    CORS_ORIGINS: list[str] = ["http://localhost:5173", "http://localhost:8080", "http://localhost", "https://scanverse-wyfc.vercel.app"]
 
     # OCR
     OCR_LANGUAGES: list[str] = ["en"]
