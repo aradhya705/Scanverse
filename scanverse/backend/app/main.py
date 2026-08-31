@@ -18,6 +18,16 @@ logger = logging.getLogger("scanverse")
 # migrations (see alembic/) are the source of truth for schema changes.
 Base.metadata.create_all(bind=engine)
 
+# Ensure new columns exist (handles cases where Alembic migration hasn't run)
+try:
+    from sqlalchemy import text
+    with engine.connect() as conn:
+        conn.execute(text("ALTER TABLE pages ADD COLUMN IF NOT EXISTS original_data BYTEA"))
+        conn.execute(text("ALTER TABLE pages ADD COLUMN IF NOT EXISTS processed_data BYTEA"))
+        conn.commit()
+except Exception:
+    pass  # Column already exists or DB not ready
+
 os.makedirs(settings.UPLOAD_DIR, exist_ok=True)
 os.makedirs(settings.EXPORT_DIR, exist_ok=True)
 

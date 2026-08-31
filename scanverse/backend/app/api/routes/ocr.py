@@ -56,14 +56,17 @@ def run_ocr_on_page(
     than it helps on a particular scan.
     """
     page = _get_owned_page(page_id, db, current_user)
-    # Read image from DB first (survives free-tier restarts), fall back to disk.
+    # Read image: try DB binary → disk path → either variant
     image = None
-    for data in [getattr(page, 'original_data', None), getattr(page, 'processed_data', None)]:
-        if data is not None:
-            arr = np.frombuffer(data, dtype=np.uint8)
-            image = cv2.imdecode(arr, cv2.IMREAD_COLOR)
-            if image is not None:
-                break
+    try:
+        for data in [getattr(page, 'original_data', None), getattr(page, 'processed_data', None)]:
+            if data is not None:
+                arr = np.frombuffer(data, dtype=np.uint8)
+                image = cv2.imdecode(arr, cv2.IMREAD_COLOR)
+                if image is not None:
+                    break
+    except Exception:
+        pass  # Column may not exist yet
     if image is None:
         for path in [page.original_path, page.processed_path]:
             if path and os.path.exists(path):
@@ -71,7 +74,7 @@ def run_ocr_on_page(
                 if image is not None:
                     break
     if image is None:
-        raise HTTPException(status_code=422, detail="Image not found — please re-upload this page")
+        raise HTTPException(status_code=422, detail="Image not found — please upload the image again")
 
     lang_list = [l.strip() for l in languages.split(",")] if languages else ([language] if language else None)
     if lang_list:
@@ -128,14 +131,16 @@ def run_ocr_on_document(
 
     page_results = []
     for page in sorted(document.pages, key=lambda p: p.order_index):
-        # Read from DB first, fall back to disk
         image = None
-        for data in [getattr(page, 'original_data', None), getattr(page, 'processed_data', None)]:
-            if data is not None:
-                arr = np.frombuffer(data, dtype=np.uint8)
-                image = cv2.imdecode(arr, cv2.IMREAD_COLOR)
-                if image is not None:
-                    break
+        try:
+            for data in [getattr(page, 'original_data', None), getattr(page, 'processed_data', None)]:
+                if data is not None:
+                    arr = np.frombuffer(data, dtype=np.uint8)
+                    image = cv2.imdecode(arr, cv2.IMREAD_COLOR)
+                    if image is not None:
+                        break
+        except Exception:
+            pass
         if image is None:
             for path in [page.original_path, page.processed_path]:
                 if path and os.path.exists(path):

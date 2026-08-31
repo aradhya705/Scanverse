@@ -26,4 +26,4 @@ EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s \
     CMD curl -f http://localhost:${PORT:-8000}/health || exit 1
 
-CMD ["sh", "-c", "alembic upgrade head || true; uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000} --proxy-headers --forwarded-allow-ips=*"]
+CMD ["sh", "-c", "echo 'Running DB migration...' && alembic upgrade head && echo 'Migration OK' || echo 'Migration failed (continuing anyway)'; uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000} --proxy-headers --forwarded-allow-ips=*"]
