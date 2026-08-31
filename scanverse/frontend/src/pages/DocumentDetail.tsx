@@ -15,6 +15,7 @@ import type { OcrResult, OcrWord } from "@/api/client";
 import CompressPdfModal from "@/components/CompressPdfModal";
 import SignatureModal from "@/components/SignatureModal";
 import WordOcrViewer from "@/components/WordOcrViewer";
+import OcrResultModal from "@/components/OcrResultModal";
 
 export default function DocumentDetail() {
   const { id } = useParams<{ id: string }>();
@@ -28,6 +29,7 @@ export default function DocumentDetail() {
   const [showSignature, setShowSignature] = useState(false);
   const [ocrResult, setOcrResult] = useState<OcrResult | null>(null);
   const [ocrViewMode, setOcrViewMode] = useState<"interactive" | "text">("interactive");
+  const [showOcrModal, setShowOcrModal] = useState(false);
 
   const { data: document, isLoading } = useQuery({
     queryKey: ["document", id],
@@ -49,6 +51,7 @@ export default function DocumentDetail() {
     mutationFn: (pageId: string) => runOcr(pageId),
     onSuccess: (result: OcrResult) => {
       setOcrResult(result);
+      setShowOcrModal(true);
       queryClient.invalidateQueries({ queryKey: ["document", id] });
     },
   });
@@ -127,9 +130,9 @@ export default function DocumentDetail() {
           {activePage ? (
             <div className="card p-4">
               <img
-                src={mediaUrl(activePage.processed_url || activePage.original_url) || ""}
+                src={mediaUrl(activePage.original_url || activePage.processed_url) || ""}
                 alt={document.title}
-                className="w-full rounded-lg"
+                className="w-full rounded-lg object-contain"
               />
             </div>
           ) : (
@@ -311,6 +314,27 @@ export default function DocumentDetail() {
           onApplied={() => {
             queryClient.invalidateQueries({ queryKey: ["document", id] });
             setShowSignature(false);
+          }}
+        />
+      )}
+
+      {showOcrModal && (ocrResult || activePage?.ocr_text) && (
+        <OcrResultModal
+          text={ocrResult?.full_text || activePage?.ocr_text || ""}
+          wordCount={ocrResult?.word_count}
+          lineCount={ocrResult?.line_count}
+          avgConfidence={ocrResult?.average_confidence}
+          onClose={() => setShowOcrModal(false)}
+          onSave={async (text) => {
+            if (activePage?.id) {
+              try {
+                await updatePageOcrText(activePage.id, text);
+                queryClient.invalidateQueries({ queryKey: ["document", id] });
+              } catch (err) {
+                console.error("Failed to save OCR text:", err);
+              }
+            }
+            setShowOcrModal(false);
           }}
         />
       )}

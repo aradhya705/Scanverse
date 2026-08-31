@@ -27,6 +27,7 @@ import PageThumbnail from "@/components/PageThumbnail";
 import CaptureOverlay from "@/components/CaptureOverlay";
 import SignatureModal from "@/components/SignatureModal";
 import WordOcrViewer from "@/components/WordOcrViewer";
+import OcrResultModal from "@/components/OcrResultModal";
 import type { OcrResult } from "@/api/client";
 import {
   Camera,
@@ -119,6 +120,7 @@ export default function NewScan() {
   const [cleanupRegions, setCleanupRegions] = useState<number[][]>([]);
   const [showCapture, setShowCapture] = useState(false);
   const [showSignature, setShowSignature] = useState(false);
+  const [showOcrModal, setShowOcrModal] = useState(false);
   const [toolsOpen, setToolsOpen] = useState(false);
   const galleryInputRef = useRef<HTMLInputElement>(null);
   const retakeInputRef = useRef<HTMLInputElement>(null);
@@ -302,6 +304,8 @@ export default function NewScan() {
       setOcrText(result.full_text);
       setOcrResult(result);
       queryClient.invalidateQueries({ queryKey: ["document", documentId] });
+      // Open the OCR result modal so the user immediately sees full text
+      setShowOcrModal(true);
       if (!result.line_count) {
         showToast("No text found on this page", "info");
       } else if (result.low_confidence_line_count > 0) {
@@ -346,7 +350,9 @@ export default function NewScan() {
     onError: () => showToast("Export failed — try again", "error"),
   });
 
-  const previewUrl = mediaUrl(activePage?.processed_url || activePage?.original_url);
+  // Always prefer the original image — processed version may be cropped by auto-enhance
+  const previewUrl = mediaUrl(activePage?.original_url || activePage?.processed_url);
+  const processedUrl = mediaUrl(activePage?.processed_url || activePage?.original_url);
 
   return (
     <div>
@@ -765,10 +771,16 @@ export default function NewScan() {
                         {ocr.isPending ? "Scanning…" : ocrResult ? "Re-run OCR" : "Run OCR"}
                       </button>
                       <button
-                        onClick={() => navigator.clipboard.writeText(ocrText)}
+                        onClick={() => {
+                          if (ocrResult) {
+                            setShowOcrModal(true);
+                          } else {
+                            navigator.clipboard.writeText(ocrText);
+                          }
+                        }}
                         className="text-xs text-brand hover:underline"
                       >
-                        Copy
+                        {ocrResult ? "View full text" : "Copy"}
                       </button>
                     </div>
                   </div>
@@ -799,7 +811,7 @@ export default function NewScan() {
                   ) : (
                     <>
                       {previewUrl && (
-                        <img src={mediaUrl(activePage.original_url) || previewUrl} alt="Preview" className="w-full rounded-lg" />
+                        <img src={mediaUrl(activePage.original_url) || previewUrl} alt="Preview" className="w-full rounded-lg object-contain" />
                       )}
                       <textarea
                         value={ocrText}
@@ -813,8 +825,12 @@ export default function NewScan() {
                 </div>
               )}
 
-              {mode === "view" && previewUrl && (
-                <img src={previewUrl} alt="Preview" className="mx-auto max-h-[70vh] w-auto rounded-lg" />
+              {mode === "view" && (
+                <img
+                  src={mediaUrl(activePage.original_url) || previewUrl || ""}
+                  alt="Preview"
+                  className="mx-auto max-h-[80vh] w-auto rounded-lg object-contain"
+                />
               )}
             </div>
           </div>
@@ -872,6 +888,30 @@ export default function NewScan() {
           onApplied={() => {
             queryClient.invalidateQueries({ queryKey: ["document", documentId] });
             setShowSignature(false);
+          }}
+        />
+      )}
+
+      {showOcrModal && ocrResult && (
+        <OcrResultModal
+          text={ocrResult.full_text}
+          wordCount={ocrResult.word_count}
+          lineCount={ocrResult.line_count}
+          avgConfidence={ocrResult.average_confidence}
+          onClose={() => setShowOcrModal(false)}
+          onSave={async (text) => {
+            setOcrText(text);
+            setOcrResult({ ...ocrResult, full_text: text });
+            if (activePageId) {
+              try {
+                await updatePageOcrText(activePageId, text);
+                queryClient.invalidateQueries({ queryKey: ["document", documentId] });
+              } catch (err) {
+                console.error("Failed to save OCR text:", err);
+              }
+            }
+            setShowOcrModal(false);
+            showToast("OCR text saved", "success");
           }}
         />
       )}

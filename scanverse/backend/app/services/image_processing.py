@@ -44,8 +44,9 @@ def _quad_geometry_score(quad: np.ndarray, image_area: float) -> float:
         return 0.0
 
     aspect = max(width, height) / min(width, height)
-    # Real documents (receipts through posters) rarely exceed ~4:1
-    aspect_penalty = 1.0 if aspect <= 4.0 else max(0.0, 1.0 - (aspect - 4.0) / 6.0)
+    # Support extreme aspect ratios: receipts, wide banners, long scrolls.
+    # Only penalize beyond 10:1 which is almost certainly a detection error.
+    aspect_penalty = 1.0 if aspect <= 10.0 else max(0.0, 1.0 - (aspect - 10.0) / 10.0)
 
     # Check how close each interior angle is to 90 degrees
     def _angle(p0, p1, p2):
@@ -190,8 +191,13 @@ def detect_document_corners(image_bgr: np.ndarray) -> tuple[list[list[float]] | 
     return ordered_full.tolist(), round(float(confidence), 2)
 
 
-def default_corners(width: int, height: int, margin_ratio: float = 0.04) -> list[list[float]]:
-    """Fallback corners: a small inset rectangle covering most of the frame."""
+def default_corners(width: int, height: int, margin_ratio: float = 0.0) -> list[list[float]]:
+    """Fallback corners: the FULL image — no crop at all.
+
+    The principle is "no crop is better than a wrong crop."  When edge
+    detection fails, we preserve the complete original image instead of
+    guessing a rectangle that may cut off content.
+    """
     mx, my = width * margin_ratio, height * margin_ratio
     return [[mx, my], [width - mx, my], [width - mx, height - my], [mx, height - my]]
 

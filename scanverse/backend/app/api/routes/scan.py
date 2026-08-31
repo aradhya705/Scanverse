@@ -90,8 +90,15 @@ async def upload_page(
     image = _read_image(original_path)
     corners, confidence = ip.detect_document_corners(image)
     if corners is None:
+        # Edge detection failed — use the full image, no crop at all
         h, w = image.shape[:2]
         corners = ip.default_corners(w, h)
+    else:
+        # Low confidence: expand detected corners to include full image
+        # boundary as a safety margin so edge content is never cut.
+        if confidence < 0.5:
+            h, w = image.shape[:2]
+            corners = ip.default_corners(w, h)
 
     next_index = len(document.pages)
     page = Page(
@@ -159,10 +166,22 @@ def process_page(
 
     working = image
     if page.corners:
-        try:
-            working = ip.warp_perspective(working, page.corners)
-        except Exception:
-            pass  # fall back to unwarped image if corners are degenerate
+        # Check if corners cover essentially the full image — if so,
+        # skip the perspective warp entirely (no benefit, risks distortion).
+        h, w = image.shape[:2]
+        corners_arr = page.corners
+        is_full_image = (
+            len(corners_arr) == 4
+            and corners_arr[0][0] < w * 0.05
+            and corners_arr[0][1] < h * 0.05
+            and corners_arr[2][0] > w * 0.95
+            and corners_arr[2][1] > h * 0.95
+        )
+        if not is_full_image:
+            try:
+                working = ip.warp_perspective(working, page.corners)
+            except Exception:
+                pass  # fall back to unwarped image if corners are degenerate
 
     if page.rotation:
         working = ip.rotate_image(working, page.rotation)
