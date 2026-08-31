@@ -86,39 +86,43 @@ def validate_languages(languages: list[str]) -> str | None:
     return None
 
 
-def extract_text(
-    image_bgr: np.ndarray,
-    languages: list[str] | None = None,
-    *,
-    preprocess: bool = True,
-    auto_deskew: bool = True,
+def _run_tesseract(
+    image: np.ndarray,
+    lang_config: str,
+    psm: int,
 ) -> dict:
+    """Run Tesseract with a specific PSM mode and return raw data + stats.
+
+    PSM modes tried:
+      3  — Fully automatic page segmentation (default, good for single-column docs)
+      6  — Assume a single uniform block of text (good for newspaper columns)
+      11 — Sparse text without order (finds text wherever it is, no layout)
     """
-    Run OCR on an image and return the full concatenated text, per-line
-    results with bounding boxes + confidence (useful for "click a word to
-    edit" UI), and aggregate quality stats.
-
-    `preprocess=True` (default) runs a deskew + shadow-removal + contrast
-    pipeline tuned for OCR accuracy before handing the image to Tesseract,
-    rather than OCR'ing the raw display image as-is.
-    """
-    langs = languages or settings.OCR_LANGUAGES
-    normalized = [_normalize_language(l) for l in langs]
-    lang_config = "+".join(normalized) if normalized else "eng"
-
-    working = prepare_for_ocr(image_bgr, auto_deskew=auto_deskew) if preprocess else image_bgr
-    # Tesseract works on grayscale; this also keeps memory use minimal.
-    gray = cv2.cvtColor(working, cv2.COLOR_BGR2GRAY)
-
+    config = f"--psm {psm} --oem 1"
     data = pytesseract.image_to_data(
-        gray,
+        image,
         lang=lang_config,
-        config="--psm 3 --oem 1",
+        config=config,
         output_type=pytesseract.Output.DICT,
     )
+    # Count meaningful words and average confidence
+    word_count = 0
+    total_conf = 0.0
+    for i in range(len(data["text"])):
+        text = (data["text"][i] or "").strip()
+        conf = float(data["conf"][i])
+        if text and conf > 0:
+            word_count += 1
+            total_conf += conf
+    avg_conf = total_conf / word_count if word_count > 0 else 0.0
+    return {"data": data, "word_count": word_count, "avg_conf": avg_conf}
 
-    # Group word-level results into lines (same block/paragraph/line), then
-    # order words left-to-right to rebuild each line of text.
+
+def _group_ocr_data(data: dict) -> tuple[list[dict], list[dict], list[str], int]:
+    """Group raw Tesseract word data into lines and build word-level entries.
+
+    Returns (lines, words, full_text_parts, low_confidence_count).
+    """
     grouped: dict[tuple[int, int, int], list[dict]] = {}
     n = len(data["text"])
     for i in range(n):
@@ -126,7 +130,7 @@ def extract_text(
         if not text:
             continue
         conf = float(data["conf"][i])
-        if conf < 0:  # -1 = not OCR'd by Tesseract
+        if conf < 0:
             conf = 0.0
         key = (data["block_num"][i], data["par_num"][i], data["line_num"][i])
         grouped.setdefault(key, []).append(
@@ -143,28 +147,25 @@ def extract_text(
     lines = []
     words_all = []
     full_text_parts = []
-    confidences = []
     low_confidence_count = 0
     word_id = 0
 
     for key in sorted(grouped.keys()):
-        words = sorted(grouped[key], key=lambda w: w["x"])
-        line_text = " ".join(w["text"] for w in words)
-        line_conf = sum(w["conf"] for w in words) / len(words)
-        # Tesseract reports 0-100; the API contract is 0-1 like EasyOCR's.
+        words_line = sorted(grouped[key], key=lambda w: w["x"])
+        line_text = " ".join(w["text"] for w in words_line)
+        line_conf = sum(w["conf"] for w in words_line) / len(words_line)
         conf = round(line_conf / 100.0, 3)
         is_low = conf < LOW_CONFIDENCE_THRESHOLD
         if is_low:
             low_confidence_count += 1
 
-        x0 = min(w["x"] for w in words)
-        y0 = min(w["y"] for w in words)
-        x1 = max(w["x"] + w["w"] for w in words)
-        y1 = max(w["y"] + w["h"] for w in words)
+        x0 = min(w["x"] for w in words_line)
+        y0 = min(w["y"] for w in words_line)
+        x1 = max(w["x"] + w["w"] for w in words_line)
+        y1 = max(w["y"] + w["h"] for w in words_line)
 
-        # Build word-level entries for this line
         line_words = []
-        for w in words:
+        for w in words_line:
             w_conf = round(w["conf"] / 100.0, 3)
             words_all.append(
                 {
@@ -172,8 +173,12 @@ def extract_text(
                     "text": w["text"],
                     "confidence": w_conf,
                     "low_confidence": w_conf < LOW_CONFIDENCE_THRESHOLD,
-                    "bbox": [[w["x"], w["y"]], [w["x"] + w["w"], w["y"]],
-                             [w["x"] + w["w"], w["y"] + w["h"]], [w["x"], w["y"] + w["h"]]],
+                    "bbox": [
+                        [w["x"], w["y"]],
+                        [w["x"] + w["w"], w["y"]],
+                        [w["x"] + w["w"], w["y"] + w["h"]],
+                        [w["x"], w["y"] + w["h"]],
+                    ],
                     "line_index": len(lines),
                 }
             )
@@ -190,8 +195,93 @@ def extract_text(
             }
         )
         full_text_parts.append(line_text)
-        confidences.append(conf)
 
+    return lines, words_all, full_text_parts, low_confidence_count
+
+
+def extract_text(
+    image_bgr: np.ndarray,
+    languages: list[str] | None = None,
+    *,
+    preprocess: bool = True,
+    auto_deskew: bool = True,
+) -> dict:
+    """
+    Run OCR on an image with multi-pass strategy for maximum accuracy.
+
+    1. Preprocess the image (upscale → sharpen → binarize → thicken).
+    2. Try multiple Tesseract PSM modes (automatic, uniform block, sparse).
+    3. Also try without binarization (grayscale) for images that already
+       have good contrast.
+    4. Pick the result with the most words and highest confidence.
+
+    Returns full text, per-line + per-word results with bounding boxes,
+    and aggregate quality stats.
+    """
+    langs = languages or settings.OCR_LANGUAGES
+    normalized = [_normalize_language(l) for l in langs]
+    lang_config = "+".join(normalized) if normalized else "eng"
+
+    # Prepare the aggressively preprocessed image (upscaled + binarized)
+    if preprocess:
+        working_binary = prepare_for_ocr(image_bgr, auto_deskew=auto_deskew)
+        gray_binary = cv2.cvtColor(working_binary, cv2.COLOR_BGR2GRAY)
+    else:
+        gray_binary = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2GRAY)
+
+    # Also prepare a grayscale version WITHOUT binarization — some images
+    # (high-quality scans with good contrast) do better without it.
+    if preprocess:
+        working_soft = prepare_for_ocr(image_bgr, auto_deskew=auto_deskew)
+        # Re-do a softer version: upscale + sharpen but skip binarization
+        h, w = image_bgr.shape[:2]
+        soft = image_bgr.copy()
+        min_side = min(h, w)
+        if min_side < 1500:
+            sf = min(3.0, 1500.0 / min_side)
+            soft = cv2.resize(soft, (int(w * sf), int(h * sf)), interpolation=cv2.INTER_CUBIC)
+        soft = cv2.bilateralFilter(soft, 9, 75, 75)
+        blur = cv2.GaussianBlur(soft, (0, 0), 3)
+        soft = cv2.addWeighted(soft, 1.5, blur, -0.5, 0)
+        soft = np.clip(soft, 0, 255).astype(np.uint8)
+        lab = cv2.cvtColor(soft, cv2.COLOR_BGR2LAB)
+        l_ch, a_ch, b_ch = cv2.split(lab)
+        clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8, 8))
+        l_ch = clahe.apply(l_ch)
+        soft = cv2.cvtColor(cv2.merge((l_ch, a_ch, b_ch)), cv2.COLOR_LAB2BGR)
+        gray_soft = cv2.cvtColor(soft, cv2.COLOR_BGR2GRAY)
+    else:
+        gray_soft = gray_binary
+
+    # Multi-pass OCR: try (image_variant, psm_mode) combinations and keep the best
+    candidates = []
+    for gray_img, variant_label in [
+        (gray_binary, "binary"),
+        (gray_soft, "soft"),
+    ]:
+        for psm in [3, 6, 11]:
+            try:
+                result = _run_tesseract(gray_img, lang_config, psm)
+                candidates.append((result, variant_label, psm))
+            except Exception:
+                continue
+
+    # Pick the candidate with the best combined score: prefer more words,
+    # and use confidence as a tiebreaker.
+    if not candidates:
+        # Absolute fallback: run with defaults on whatever we have
+        data = pytesseract.image_to_data(
+            gray_binary, lang=lang_config,
+            config="--psm 3 --oem 1",
+            output_type=pytesseract.Output.DICT,
+        )
+        lines, words_all, full_text_parts, low_confidence_count = _group_ocr_data(data)
+    else:
+        best = max(candidates, key=lambda c: (c[1]["word_count"], c[1]["avg_conf"]))
+        data = best[0]["data"]
+        lines, words_all, full_text_parts, low_confidence_count = _group_ocr_data(data)
+
+    confidences = [l["confidence"] for l in lines]
     avg_confidence = round(sum(confidences) / len(confidences), 3) if confidences else 0.0
 
     return {

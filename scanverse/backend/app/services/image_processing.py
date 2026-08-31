@@ -555,26 +555,69 @@ def deskew(image_bgr: np.ndarray, angle: float | None = None) -> np.ndarray:
 
 
 def prepare_for_ocr(image_bgr: np.ndarray, *, auto_deskew: bool = True) -> np.ndarray:
-    """Preprocessing pass tuned to boost OCR accuracy rather than visual
-    appeal: optional deskew, shadow/uneven-lighting removal, denoise, and a
-    contrast lift via CLAHE. Kept separate from `auto_enhance` (used for the
-    on-screen filter) since OCR benefits from a flatter, higher-contrast
-    image than what looks best to a human eye.
+    """Aggressive preprocessing pipeline tuned for maximum OCR accuracy
+    on real-world photos: newspaper clippings, magazine pages, receipts,
+    and phone camera captures.
+
+    Steps:
+    1. Upscale small images (small text needs 2-3x enlargement)
+    2. Optional deskew
+    3. Mild denoise (preserves text edges)
+    4. Adaptive sharpening (reverses camera blur)
+    5. CLAHE contrast boost in LAB space
+    6. Otsu binarization for clean black-and-white text
+    7. Morphological cleanup to thicken thin strokes
     """
-    working = image_bgr
+    h, w = image_bgr.shape[:2]
+    working = image_bgr.copy()
+
+    # Step 1: Upscale if the image is too small for reliable OCR.
+    # Newspaper text in phone photos is often only 8-12px tall; Tesseract
+    # needs 20-30px for accurate character recognition.
+    min_side = min(h, w)
+    if min_side < 1500:
+        scale_factor = min(3.0, 1500.0 / min_side)
+        working = cv2.resize(
+            working,
+            (int(w * scale_factor), int(h * scale_factor)),
+            interpolation=cv2.INTER_CUBIC,
+        )
+
+    # Step 2: Deskew to straighten text lines
     if auto_deskew:
         working = deskew(working)
 
-    working = remove_shadows(working)
+    # Step 3: Mild denoise — use a small kernel to preserve text edges
+    # (the old heavy denoising destroyed thin newspaper text)
+    working = cv2.bilateralFilter(working, 9, 75, 75)
 
+    # Step 4: Adaptive sharpening via unsharp mask — reverses camera blur
+    # without amplifying noise the way a hard kernel does.
+    blur = cv2.GaussianBlur(working, (0, 0), 3)
+    working = cv2.addWeighted(working, 1.5, blur, -0.5, 0)
+    working = np.clip(working, 0, 255).astype(np.uint8)
+
+    # Step 5: CLAHE contrast boost in LAB L-channel
     lab = cv2.cvtColor(working, cv2.COLOR_BGR2LAB)
     l, a, b = cv2.split(lab)
-    clahe = cv2.createCLAHE(clipLimit=2.5, tileGridSize=(8, 8))
+    clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8, 8))
     l = clahe.apply(l)
     working = cv2.cvtColor(cv2.merge((l, a, b)), cv2.COLOR_LAB2BGR)
 
-    working = cv2.fastNlMeansDenoisingColored(working, None, 4, 4, 7, 21)
-    return working
+    # Step 6: Convert to grayscale + Otsu binarization for crisp text
+    gray = cv2.cvtColor(working, cv2.COLOR_BGR2GRAY)
+    # Apply a slight Gaussian blur before threshold to reduce salt-and-pepper noise
+    gray = cv2.GaussianBlur(gray, (3, 3), 0)
+    _, binary = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+
+    # Step 7: Morphological close to thicken thin strokes that camera blur
+    # or low resolution may have eroded.  Use a small 2x2 kernel so we
+    # don't merge characters together.
+    kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (2, 2))
+    binary = cv2.morphologyEx(binary, cv2.MORPH_CLOSE, kernel)
+
+    # Convert back to 3-channel BGR so Tesseract's expects_bgr path works
+    return cv2.cvtColor(binary, cv2.COLOR_GRAY2BGR)
 
 
 def make_thumbnail(image_bgr: np.ndarray, max_size: int = 320) -> np.ndarray:
