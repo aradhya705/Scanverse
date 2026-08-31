@@ -1,19 +1,18 @@
-# Render Blueprint for the ScanVerse backend — FREE TIER ($0/mo).
+# Render Blueprint for the ScanVerse backend.
 # Deploy: render.com -> New -> Blueprint -> select aradhya705/Scanverse.
 #
-# Free-tier caveats (honest list):
-#  - No persistent disk: uploaded/exported files are wiped on every redeploy.
-#  - The web service sleeps after 15 min of inactivity; cold start ~1 min.
-#  - 512 MB RAM: fine for scanning/PDF tools; heavy OCR may be tight.
-#  - The free Postgres expires after 90 days (then swap to Neon/Supabase free).
-# If you later want storage + more RAM, change plan to starter/standard and
-# add the disk block again (that is what triggers the "pay" screen).
+# IMPORTANT: The starter plan ($7/mo) is required for persistent disk.
+# Without it, uploaded files are wiped when the service restarts.
 
 services:
   - type: web
     name: scanverse-api
     env: docker
-    plan: free
+    plan: starter
+    disk:
+      name: scanverse-data
+      mountPath: /data
+      sizeGB: 1
     branch: main
     rootDir: backend
     dockerfilePath: ./Dockerfile
@@ -28,6 +27,10 @@ services:
           name: scanverse-db
           property: connectionString
       # IMPORTANT: replace with the exact URL of your Vercel frontend.
+      - key: UPLOAD_DIR
+        value: /data/uploads
+      - key: EXPORT_DIR
+        value: /data/exports
       - key: CORS_ORIGINS
         value: '["https://scanverse-wyfc.vercel.app"]'
 

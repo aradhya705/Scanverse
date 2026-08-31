@@ -320,7 +320,12 @@ export default function NewScan() {
       }
     },
     onError: (err: any) => {
-      showToast(err?.response?.data?.detail || "OCR failed — try again", "error");
+      const msg = err?.response?.data?.detail || "OCR failed";
+      if (msg.includes("not found") || msg.includes("missing")) {
+        showToast("Image file not found on server. Please upload the image again.", "error");
+      } else {
+        showToast(msg, "error");
+      }
     },
   });
 

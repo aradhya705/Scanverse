@@ -53,9 +53,11 @@ async def _save_upload_validated(file, directory: str, ext: str) -> str:
 
 
 def _read_image(path: str):
+    if not path or not os.path.exists(path):
+        raise HTTPException(status_code=422, detail="Image file not found on server — please re-upload")
     img = cv2.imread(path)
     if img is None:
-        raise HTTPException(status_code=422, detail="Could not read uploaded image")
+        raise HTTPException(status_code=422, detail="Could not decode image file — it may be corrupted")
     return img
 
 
@@ -287,6 +289,8 @@ def cleanup_page(
     page = _get_owned_page(page_id, db, current_user)
 
     source_path = page.processed_path or page.original_path
+    if not source_path or not os.path.exists(source_path):
+        raise HTTPException(status_code=422, detail="Image file not found — please re-upload this page")
     image = _read_image(source_path)
     cleaned = ip.cleanup_regions(image, payload.regions)
 
@@ -316,18 +320,18 @@ def cleanup_page(
 def duplicate_page(
     page_id: str, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)
 ):
-    page = _get_owned_page(page_id, db, current_user)
-    directory = user_dir(current_user.id)
-
+    page = _get_owned_page(page_id, db, current_user)    directory = user_dir(current_user.id)
+    if not page.original_path or not os.path.exists(page.original_path):
+        raise HTTPException(status_code=422, detail="Original image not found — cannot duplicate")
     new_original = os.path.join(directory, new_filename("jpg"))
     shutil.copyfile(page.original_path, new_original)
 
     new_processed = None
     new_thumb = None
-    if page.processed_path:
+    if page.processed_path and os.path.exists(page.processed_path):
         new_processed = os.path.join(directory, f"processed_{new_filename('jpg')}")
         shutil.copyfile(page.processed_path, new_processed)
-    if page.thumbnail_path:
+    if page.thumbnail_path and os.path.exists(page.thumbnail_path):
         new_thumb = os.path.join(directory, f"thumb_{new_filename('jpg')}")
         shutil.copyfile(page.thumbnail_path, new_thumb)
 
@@ -386,6 +390,8 @@ def add_signature(
         raise HTTPException(status_code=400, detail="signature_png_b64 is not valid PNG data")
 
     source_path = page.processed_path or page.original_path
+    if not source_path or not os.path.exists(source_path):
+        raise HTTPException(status_code=422, detail="Image file not found — please re-upload this page")
     try:
         composited = signature_service.composite_signature(
             page_path=source_path,
